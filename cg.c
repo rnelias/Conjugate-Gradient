@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "mv_ops.h"
 
@@ -67,7 +68,11 @@ int main(int argc, char **argv)
   //test_mv_ops(mat_A, vec_b);
 
   /* Compute CG */
+  time_t start = time(NULL);
   conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+  time_t end = time(NULL);
+
+  printf("CG took approx %d seconds\n", (int)(end - start));
 
   /* Print result */
   print_sparse(vec_x);
