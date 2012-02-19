@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -g
+CFLAGS=-Wall -g -fopenmp
 LIBS=
 OBJS=mv_ops.c cg.c
 PROG_NAME=cg

@@ -105,6 +105,7 @@ int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
 
   ci = mat_A->row_ptr[row_id];
   
+  /* TODO:  #pragma omp parallel for */
   for(i = 0; i < mat_A->size; i++) {
     p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
   }
@@ -125,6 +126,9 @@ double dot_product(struct __mv_sparse *vec_a, struct __mv_sparse *vec_b)
   if(vec_a->size != vec_b->size)
     return -1.0;
 
+#pragma omp parallel for               \
+            default(shared) private(i) \
+            reduction(+:dp_res)
   for(i = 0; i < vec_a->size; i++)
     dp_res += vec_a->values[i] * vec_b->values[i];
 
@@ -151,6 +155,7 @@ int sv_mult(double sca, struct __mv_sparse *vec_a, struct __mv_sparse **vec_r)
     (*vec_r)->nnz = vec_a->nnz;
   }
 
+#pragma omp parallel for
   for(i = 0; i < vec_a->size; i++)
     (*vec_r)->values[i] = sca * vec_a->values[i];
 
@@ -183,19 +188,25 @@ int mv_mult(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b, struct __mv_sp
     (*vec_r)->nnz = vec_b->nnz;
   }
 
-  curr_row = (double *)calloc(vec_b->size, sizeof(double));
+#pragma omp parallel for                        \
+  default(shared) private(i,curr_row)
   for(i = 0; i < mat_A->size; i++) {
-    bzero(curr_row, vec_b->size * sizeof(double));
+    curr_row = (double *)calloc(vec_b->size, sizeof(double));
     mat_get_row(mat_A, i, curr_row);
     dp_res = 0;
 
+    /* Parallel dot product between current row and input vector */
+#pragma omp parallel for                        \
+  default(shared) private(j)                    \
+  reduction(+:dp_res)
     for(j = 0; j < vec_b->size; j++) {
       dp_res += curr_row[j] * vec_b->values[j];
     }
 
     (*vec_r)->values[i] = dp_res;
+
+    free(curr_row);
   }
-  free(curr_row);
 
   return 0;
 }
@@ -223,6 +234,7 @@ int vec_add(struct __mv_sparse *vec_a, struct __mv_sparse *vec_b, struct __mv_sp
     (*vec_r)->nnz = vec_a->nnz;
   }
 
+#pragma omp parallel for
   for(i = 0; i < vec_a->size; i++)
     (*vec_r)->values[i] = vec_a->values[i] + vec_b->values[i];
 
@@ -252,6 +264,7 @@ int vec_sub(struct __mv_sparse *vec_a, struct __mv_sparse *vec_b, struct __mv_sp
     (*vec_r)->nnz = vec_a->nnz;
   }
 
+#pragma omp parallel for
   for(i = 0; i < vec_a->size; i++)
     (*vec_r)->values[i] = vec_a->values[i] - vec_b->values[i];
 
