@@ -13,10 +13,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
+
+#define ROOT_RANK 0
 
 struct __mv_sparse {
   int size;
   int nnz;
+  int start;
+  int end;
   double *values;
   int *col_indices;
   int *row_ptr;
@@ -27,6 +32,10 @@ struct __mv_sparse *new_mv_struct();
 struct __mv_sparse *new_mv_struct_with_size(int);
 void free_mv_struct(struct __mv_sparse *);
 struct __mv_sparse *mv_deep_copy(struct __mv_sparse *);
+
+/* Distribution */
+struct __mv_sparse *distribute_matrix(struct __mv_sparse *);
+struct __mv_sparse *distribute_vector(struct __mv_sparse *);
 
 /* Printing */
 void print_sparse(struct __mv_sparse *);

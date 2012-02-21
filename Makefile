@@ -1,4 +1,4 @@
-CC=gcc
+CC=mpicc
 CFLAGS=-Wall -g
 LIBS=
 OBJS=mv_ops.c cg.c

@@ -9,6 +9,9 @@
 
 #include "mv_ops.h"
 
+extern int g_mpi_rank;
+extern int g_mpi_group_size;
+
 /* ---------- Creating and Destroying Sparse Objects ---------- */
 
 struct __mv_sparse *new_mv_struct()
@@ -71,6 +74,95 @@ struct __mv_sparse *mv_deep_copy(struct __mv_sparse *orig)
   }
 
   return cp;
+}
+
+/* ---------- Distribution ---------- */
+struct __mv_sparse *distribute_matrix(struct __mv_sparse *mat_A)
+{
+  int d_size, d_nnz;
+  int num_values, num_col_indices, num_row_ptr;
+
+  double *r_values = NULL;
+  int *r_col_indices = NULL;
+  int *r_row_ptr = NULL;
+
+  struct __mv_sparse *d_mat = NULL;
+
+  if(g_mpi_rank == ROOT_RANK) {
+    d_size = mat_A->size;
+    d_nnz = mat_A->nnz;
+    r_values = mat_A->values;
+    r_col_indices = mat_A->col_indices;
+    r_row_ptr = mat_A->row_ptr;
+  }
+
+  MPI_Bcast(&d_size, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&d_nnz, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+
+  d_mat = new_mv_struct();
+  d_mat->size = d_size;
+  d_mat->nnz = d_nnz;
+  d_mat->start = g_mpi_rank * (d_size / g_mpi_group_size);
+  d_mat->end = (g_mpi_rank + 1) * (d_size / g_mpi_group_size);
+  
+  num_values = d_size / g_mpi_group_size;
+  num_col_indices = num_values;
+  num_row_ptr = 1;
+
+  d_mat->values = (double *)calloc(num_values, sizeof(double));
+  d_mat->col_indices = (int *)calloc(num_col_indices, sizeof(int));
+  d_mat->row_ptr = (int *)calloc(num_row_ptr, sizeof(int));
+
+  /* Scatter Values */
+  MPI_Scatter(r_values, num_values, MPI_DOUBLE
+              , d_mat->values, num_values, MPI_DOUBLE
+              , ROOT_RANK, MPI_COMM_WORLD);
+
+  /* Scatter column indices */
+  MPI_Scatter(r_col_indices, num_col_indices, MPI_INT
+              , d_mat->col_indices, num_col_indices, MPI_INT
+              , ROOT_RANK, MPI_COMM_WORLD);
+
+  /* Scatter row pointers */
+  //MPI_Scatterv();
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  return d_mat;
+}
+
+struct __mv_sparse *distribute_vector(struct __mv_sparse *vec_b)
+{
+  int d_size, d_nnz, num_values;
+  double *r_values = NULL;
+  struct __mv_sparse *d_vec = NULL;
+
+  if(g_mpi_rank == ROOT_RANK) {
+    d_size = vec_b->size;
+    d_nnz = vec_b->nnz;
+    r_values = vec_b->values;
+  }
+
+  MPI_Bcast(&d_size, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&d_nnz, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+
+  d_vec = new_mv_struct();
+  d_vec->size = d_size;
+  d_vec->nnz = d_nnz;
+  d_vec->start = g_mpi_rank * (d_size / g_mpi_group_size);
+  d_vec->end = (g_mpi_rank + 1) * (d_size / g_mpi_group_size);
+
+  num_values = d_vec->size / g_mpi_group_size;  
+  d_vec->values = (double *)calloc(num_values, sizeof(double));
+  d_vec->col_indices = NULL;
+  d_vec->row_ptr = NULL;
+
+  /* Scatter values */
+  MPI_Scatter(r_values, num_values, MPI_DOUBLE
+              , d_vec->values, num_values, MPI_DOUBLE
+              , ROOT_RANK, MPI_COMM_WORLD);
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+  return d_vec;
 }
 
 /* ---------- Printing Sparse Objects ---------- */

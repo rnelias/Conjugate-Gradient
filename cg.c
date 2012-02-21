@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <mpi.h>
 
 #include "mv_ops.h"
 
@@ -39,10 +40,33 @@ void stack_clear();
 int stack_to_int();
 double stack_to_double();
 
+/* ---------- Macros ---------- */
+#define ROOT_RANK           0
+#define BEGIN_ROOT_SECTION  if(g_mpi_rank == ROOT_RANK) {
+#define END_ROOT_SECTION    }
+
+/* ---------- Global Variables ---------- */
+int g_mpi_rank = -1;
+int g_mpi_group_size = -1;
+
 int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
+
+  struct __mv_sparse *mat_A = NULL;
+  struct __mv_sparse *vec_b = NULL;
+  struct __mv_sparse *vec_x = NULL;
+
+  struct __mv_sparse *d_mat_A = NULL;
+  struct __mv_sparse *d_vec_b = NULL;
+
+  MPI_Init(&argc, &argv);
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &g_mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &g_mpi_group_size);
+
+  BEGIN_ROOT_SECTION
 
   /* Process command arguments */
   if(argc < 3) {
@@ -57,9 +81,9 @@ int main(int argc, char **argv)
     no_output = argv[3][0] == 'y' ? TRUE : FALSE;
 
   /* Initialize matrix A and vector b */
-  struct __mv_sparse *mat_A = new_mv_struct();
-  struct __mv_sparse *vec_b = new_mv_struct();
-  struct __mv_sparse *vec_x = NULL;
+  mat_A = new_mv_struct();
+  vec_b = new_mv_struct();
+  vec_x = NULL;
 
   /* Read input */
   read_input_file(input_file, mat_A, vec_b);
@@ -67,12 +91,19 @@ int main(int argc, char **argv)
   /* Test MV Ops */
   //test_mv_ops(mat_A, vec_b);
 
-  /* Compute CG */
-  time_t start = time(NULL);
-  conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-  time_t end = time(NULL);
+  END_ROOT_SECTION
 
-  printf("CG took approx %d seconds\n", (int)(end - start));
+  d_mat_A = distribute_matrix(mat_A);
+  d_vec_b = distribute_vector(vec_b);
+
+  /* Compute CG */
+  //time_t start = time(NULL);
+  //conj_grad(max_iterations, d_mat_A, d_vec_b, &vec_x);
+  //time_t end = time(NULL);
+
+  BEGIN_ROOT_SECTION
+
+    //printf("CG took approx %d seconds\n", (int)(end - start));
 
   /* Print result */
   print_sparse(vec_x);
@@ -80,6 +111,10 @@ int main(int argc, char **argv)
   /* Clean Up */
   free_mv_struct(mat_A);
   free_mv_struct(vec_b);
+
+  END_ROOT_SECTION
+
+  MPI_Finalize();
 
   return 0;
 }
