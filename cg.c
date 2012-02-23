@@ -53,6 +53,7 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
+  int d_max_iter = -1;
 
   double start_time = 0.0;
   double end_time = 0.0;
@@ -88,14 +89,18 @@ int main(int argc, char **argv)
   mat_A = new_mv_struct();
   vec_b = new_mv_struct();
 
+  d_max_iter = max_iterations;
+
   /* Read input */
   read_input_file(input_file, mat_A, vec_b);
 
   END_ROOT_SECTION
 
+  MPI_Bcast(&d_max_iter, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+
   d_mat_A = distribute_matrix(mat_A);
   d_vec_b = distribute_vector(vec_b);
-
+  
   /* Test MV Ops */
   //test_mv_ops(d_mat_A, d_vec_b);
 
@@ -103,13 +108,12 @@ int main(int argc, char **argv)
   if(g_mpi_rank == ROOT_RANK)
     start_time = MPI_Wtime();
 
-  d_vec_x = conj_grad(max_iterations, d_mat_A, d_vec_b);
+  d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
 
   if(g_mpi_rank == ROOT_RANK)
     end_time = MPI_Wtime();  
 
   vec_x = gather_vector(d_vec_x);
-  MPI_Barrier(MPI_COMM_WORLD);
 
   BEGIN_ROOT_SECTION
 
@@ -145,10 +149,8 @@ struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __
   vec_prev_r = NULL;
   vec_p = NULL;
 
-  printf("[rank %d] entered conj_grad\n", g_mpi_rank);
-
   vx_old = NULL;
-  vx_new = new_mv_struct_with_size(vec_b->size / g_mpi_group_size);
+  vx_new = mv_shallow_copy(vec_b);
 
   k = 0;                           /* current number of iterations */
   vec_r = mv_deep_copy(vec_b);     /* residual */
@@ -156,32 +158,45 @@ struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __
 
   while(TRUE) {
     mv_mult(mat_A, vec_p, &vec_s);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "mv_mult");
 
     sca_alpha = dot_product(vec_r, vec_r) / dot_product(vec_p, vec_s);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k,  "dot_product");
 
     sv_mult(sca_alpha, vec_p, &sv_res);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult");
 
     vx_old = mv_deep_copy(vx_new);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "deep_copy");
+
     vec_add(vx_old, sv_res, &vx_new);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_add");
 
     vec_prev_r = mv_deep_copy(vec_r);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "deep_copy 2");
 
     sv_mult(sca_alpha, vec_s, &sv_res);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult 2");
+
     vec_sub(vec_r, sv_res, &vec_r);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_sub");
 
     if(k == max_iter) {
       break;
     }
 
     sca_beta = dot_product(vec_r, vec_r) / dot_product(vec_prev_r, vec_prev_r);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "dot_product 2");
 
     sv_mult(sca_beta, vec_p, &sv_res);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult 3");
+
     vec_add(vec_r, sv_res, &vec_p);
+    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_add 2");
 
     k++;
   }
 
-  printf("[rank %d] exiting conj_grad\n", g_mpi_rank);
   return vx_new;
 }
 

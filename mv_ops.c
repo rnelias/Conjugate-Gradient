@@ -23,16 +23,19 @@ struct __mv_sparse *new_mv_struct()
   return mv_sparse;
 }
 
-struct __mv_sparse *new_mv_struct_with_size(int size)
+struct __mv_sparse *mv_shallow_copy(struct __mv_sparse *orig)
 {
   struct __mv_sparse *mv_sparse = NULL;
 
   mv_sparse = new_mv_struct();
 
-  mv_sparse->size = size;
-  mv_sparse->nnz = size;
+  mv_sparse->size = orig->size;
+  mv_sparse->nnz = orig->nnz;
+  mv_sparse->nval = orig->nval;
+  mv_sparse->start = orig->start;
+  mv_sparse->end = orig->end;
 
-  mv_sparse->values = (double *)calloc(size, sizeof(double));
+  mv_sparse->values = (double *)calloc(orig->nval, sizeof(double));
   mv_sparse->col_indices = NULL;
   mv_sparse->row_ptr = NULL;
 
@@ -55,22 +58,25 @@ struct __mv_sparse *mv_deep_copy(struct __mv_sparse *orig)
 
   cp->size = orig->size;
   cp->nnz = orig->nnz;
+  cp->nval = orig->nval;
+  cp->start = orig->start;
+  cp->end = orig->end;
 
-  cp->values = (double *)calloc(cp->nnz, sizeof(double));
-  memcpy(cp->values, orig->values, cp->nnz * sizeof(double));
+  cp->values = (double *)calloc(cp->nval, sizeof(double));
+  memcpy(cp->values, orig->values, cp->nval * sizeof(double));
 
   if(orig->col_indices == NULL) {
     cp->col_indices = NULL;
   } else {
-    cp->col_indices = (int *)calloc(cp->nnz, sizeof(int));
-    memcpy(cp->col_indices, orig->col_indices, cp->nnz * sizeof(int));
+    cp->col_indices = (int *)calloc(cp->nval, sizeof(int));
+    memcpy(cp->col_indices, orig->col_indices, cp->nval * sizeof(int));
   }
 
   if(orig->row_ptr == NULL) {
     cp->row_ptr = NULL;
   } else {
-    cp->row_ptr = (int *)calloc(cp->size + 1, sizeof(int));
-    memcpy(cp->row_ptr, orig->row_ptr, (cp->size + 1) * sizeof(int));
+    cp->row_ptr = (int *)calloc(cp->size / g_mpi_group_size, sizeof(int));
+    memcpy(cp->row_ptr, orig->row_ptr, (cp->size / g_mpi_group_size) * sizeof(int));
   }
 
   return cp;

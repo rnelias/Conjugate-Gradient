@@ -30,8 +30,8 @@ struct __mv_sparse {
 
 /* Creating & Destroying Sparse Objects */
 struct __mv_sparse *new_mv_struct();
-struct __mv_sparse *new_mv_struct_with_size(int);
 void free_mv_struct(struct __mv_sparse *);
+struct __mv_sparse *mv_shallow_copy(struct __mv_sparse *);
 struct __mv_sparse *mv_deep_copy(struct __mv_sparse *);
 
 /* Distribution */
