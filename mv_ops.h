@@ -38,13 +38,13 @@ struct __mv_sparse *mv_deep_copy(struct __mv_sparse *);
 struct __mv_sparse *distribute_matrix(struct __mv_sparse *);
 struct __mv_sparse *distribute_vector(struct __mv_sparse *);
 struct __mv_sparse *gather_vector(struct __mv_sparse *);
+struct __mv_sparse *gatherAll_vector(struct __mv_sparse *);
 
 /* Printing */
 void print_sparse(struct __mv_sparse *, const char *);
 
 /* Accessing Matrix Rows */
 int mat_get_row(struct __mv_sparse *, int, double *);
-int mat_get_row_chunk(struct __mv_sparse *, int, int, int, double *);
 
 /* Arithmetic Operations */
 double dot_product(struct __mv_sparse *, struct __mv_sparse *);

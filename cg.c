@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 
   struct __mv_sparse *d_mat_A = NULL;
   struct __mv_sparse *d_vec_b = NULL;
-  //struct __mv_sparse *d_vec_x = NULL;
+  struct __mv_sparse *d_vec_x = NULL;
 
   MPI_Init(&argc, &argv);
 
@@ -97,10 +97,9 @@ int main(int argc, char **argv)
   d_vec_b = distribute_vector(vec_b);
 
   /* Test MV Ops */
-  test_mv_ops(d_mat_A, d_vec_b);
+  //test_mv_ops(d_mat_A, d_vec_b);
 
   /* Compute CG */
-  /*
   if(g_mpi_rank == ROOT_RANK)
     start_time = MPI_Wtime();
 
@@ -111,14 +110,13 @@ int main(int argc, char **argv)
 
   vec_x = gather_vector(d_vec_x);
   MPI_Barrier(MPI_COMM_WORLD);
-  */
 
   BEGIN_ROOT_SECTION
 
-    //printf("CG took approx %f seconds\n", end_time - start_time);
+  printf("CG took approx %f seconds\n", end_time - start_time);
 
   /* Print result */
-  //print_sparse(vec_x, "vec_x (result)");
+  print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);
@@ -404,15 +402,23 @@ double stack_to_double()
 
 int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
 {
-  struct __mv_sparse *vec_x = NULL;
-  struct __mv_sparse *d_vec_x = NULL;
+  //struct __mv_sparse *vec_x = NULL;
+  //struct __mv_sparse *d_vec_x = NULL;
 
   //print_sparse(mat_A, "d_mat_A");
   //print_sparse(vec_b, "d_vec_b");
 
-  mv_mult(mat_A, vec_b, &vec_x);
+  /*
+  print_sparse(vec_b, "vec_b (gatherAll_vector)");
+  vec_x = gatherAll_vector(vec_b);
+  print_sparse(vec_x, "vec_x (gatherAll_vector)");
+  */
+
+  /*
+  mv_mult(mat_A, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (mv_mult)");
+  */
 
   /*
   sv_mult(4.0, vec_b, &d_vec_x);

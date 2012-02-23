@@ -141,8 +141,6 @@ struct __mv_sparse *distribute_matrix(struct __mv_sparse *mat_A)
                , d_mat->row_ptr, (d_size / g_mpi_group_size) + 1, MPI_INT
                , ROOT_RANK, MPI_COMM_WORLD);
 
-  printf("[rank %d] got matrix part\n", g_mpi_rank);
-  //MPI_Barrier(MPI_COMM_WORLD);
   return d_mat;
 }
 
@@ -178,9 +176,28 @@ struct __mv_sparse *distribute_vector(struct __mv_sparse *vec_b)
               , d_vec->values, num_values, MPI_DOUBLE
               , ROOT_RANK, MPI_COMM_WORLD);
   
-  printf("[rank %d] got vector part\n", g_mpi_rank);
-  //MPI_Barrier(MPI_COMM_WORLD);
   return d_vec;
+}
+
+struct __mv_sparse *gatherAll_vector(struct __mv_sparse *d_vec_x)
+{
+  struct __mv_sparse *vec_x = NULL;
+
+  vec_x = new_mv_struct();
+  vec_x->size = d_vec_x->size;
+  vec_x->nnz = d_vec_x->nnz;
+  vec_x->nval = d_vec_x->nval * g_mpi_group_size;
+  vec_x->start = 0;
+  vec_x->end = 0;
+  vec_x->col_indices = NULL;
+  vec_x->row_ptr = NULL;
+  vec_x->values = (double *)calloc(vec_x->nval, sizeof(double));
+
+  MPI_Allgather(d_vec_x->values, d_vec_x->nval, MPI_DOUBLE
+                , vec_x->values, d_vec_x->nval, MPI_DOUBLE
+                , MPI_COMM_WORLD);
+
+  return vec_x;
 }
 
 struct __mv_sparse *gather_vector(struct __mv_sparse *d_vec_x)
@@ -240,23 +257,6 @@ void print_sparse(struct __mv_sparse *sparse_obj, const char *obj_tag)
 }
 
 /* ---------- Accessing Matrix Rows ---------- */
-
-int mat_get_row_chunk(struct __mv_sparse *mat_A, int row_id, int chunk_start, int chunk_end, double *p_row)
-{
-  int ci, i;
-
-  if(!mat_A || !p_row)
-    return -1;
-
-  ci = mat_A->row_ptr[row_id];
-
-  for(i = 0; i < mat_A->size; i++) {
-    p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
-  }
-
-  return 0;
-}
-
 int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
 {
   int ci, i;
@@ -264,7 +264,7 @@ int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
   if(!mat_A || !p_row)
     return -1;
 
-  ci = mat_A->row_ptr[row_id];
+  ci = mat_A->row_ptr[row_id] - (g_mpi_rank * mat_A->size);
   
   for(i = 0; i < mat_A->size; i++) {
     p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
@@ -327,69 +327,60 @@ int sv_mult(double sca, struct __mv_sparse *vec_a, struct __mv_sparse **vec_r)
   return 0;
 }
 
-int mv_mult(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b, struct __mv_sparse **vec_r)
+int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __mv_sparse **d_vec_r)
 {
-  double *curr_chunk = NULL;
-  int i = 0, j = 0, c = 0;
+  struct __mv_sparse *vec_x = NULL;
 
-  double el_dp_res = 0.0;
+  double *curr_row = NULL;
+  int i = 0, j = 0;
+
+  double dp_res = 0.0;
   double row_dp_res = 0.0;
-  double chunk_db_res = 0.0;
 
-  if(!mat_A || !vec_b)
+  if(!d_mat_A || !d_vec_b)
     return -1;
 
-  if(mat_A->size != vec_b->size)
+  if(d_mat_A->size != d_vec_b->size)
     return -1;
 
-  if(*vec_r == NULL) {
-    *vec_r = new_mv_struct();
-    (*vec_r)->values = (double *)calloc(mat_A->nval, sizeof(double));
-    (*vec_r)->size = mat_A->size;
-    (*vec_r)->nnz = vec_b->nnz;
-    (*vec_r)->start = vec_b->start;
-    (*vec_r)->end = vec_b->end;
-    (*vec_r)->nval = vec_b->nval;
-    (*vec_r)->row_ptr = NULL;
+  if(*d_vec_r == NULL) {
+    *d_vec_r = new_mv_struct();
+    (*d_vec_r)->values = (double *)calloc(d_mat_A->nval, sizeof(double));
+    (*d_vec_r)->size = d_mat_A->size;
+    (*d_vec_r)->nnz = d_vec_b->nnz;
+    (*d_vec_r)->start = d_vec_b->start;
+    (*d_vec_r)->end = d_vec_b->end;
+    (*d_vec_r)->nval = d_vec_b->nval;
+    (*d_vec_r)->row_ptr = NULL;
   } else {
-    (*vec_r)->values = (double *)realloc((*vec_r)->values, mat_A->nval * sizeof(double));
-    bzero((*vec_r)->values, mat_A->nval * sizeof(double));
-    (*vec_r)->size = mat_A->size;
-    (*vec_r)->nnz = vec_b->nnz;
-    (*vec_r)->start = vec_b->start;
-    (*vec_r)->end = vec_b->end;
-    (*vec_r)->nval = vec_b->nval;
+    (*d_vec_r)->values = (double *)realloc((*d_vec_r)->values, d_mat_A->nval * sizeof(double));
+    bzero((*d_vec_r)->values, d_mat_A->nval * sizeof(double));
+    (*d_vec_r)->size = d_mat_A->size;
+    (*d_vec_r)->nnz = d_vec_b->nnz;
+    (*d_vec_r)->start = d_vec_b->start;
+    (*d_vec_r)->end = d_vec_b->end;
+    (*d_vec_r)->nval = d_vec_b->nval;
   }
 
-  curr_chunk = (double *)calloc(vec_b->nval, sizeof(double));
+  curr_row = (double *)calloc(d_vec_b->size, sizeof(double));
 
-  /* executed per row */
-  for(i = 0; i < (mat_A->end - mat_A->start); i++) {
+  vec_x = gatherAll_vector(d_vec_b);
+
+  int nrow = d_mat_A->end - d_mat_A->start;
+  for(i = 0; i < nrow; i++) {
     row_dp_res = 0.0;
 
-    /* executed per chunk */
-    for(c = 0; c < mat_A->nval; c++) {
-      el_dp_res = 0.0;
-      chunk_dp_res = 0.0;
+    bzero(curr_row, d_vec_b->nval * sizeof(double));
+    mat_get_row(d_mat_A, i, curr_row);
+    
+    for(j = 0; j < vec_x->size; j++) {
+      dp_res += curr_row[j] * vec_x->values[j];
+    }
+    
+    (*d_vec_r)->values[i] = dp_res;
+  }
 
-      bzero(curr_chunk, vec_b->nval * sizeof(double));
-      mat_get_row_chunk(mat_A, i + mat_A->start, mat_A->start, mat_A->end, curr_chunk);
-
-      /* executed per element */
-      for(j = 0; j < vec_b->nval; j++) {
-        el_dp_res += curr_chunk[j] * vec_b->values[j];
-      } /* end element */
-
-      MPI_Reduce(&el_dp_res, &chunk_dp_res, 1, MPI_DOUBLE
-                 , MPI_SUM, ROOT_RANK, MPI_COMM_WORLD);
-
-      row_dp_res += chunk_dp_res;
-    } /* end chunk */
-
-    (*vec_r)->values[i] = row_dp_res;
-  } /* end row */
-
-  free(curr_chunk);
+  free(curr_row);
 
   return 0;
 }
