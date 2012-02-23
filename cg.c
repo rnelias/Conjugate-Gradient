@@ -22,7 +22,7 @@
 
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
-int conj_grad(int, struct __mv_sparse *, struct __mv_sparse *, struct __mv_sparse **);
+struct __mv_sparse *conj_grad(int, struct __mv_sparse *, struct __mv_sparse *);
 int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b);
 
 /* ---------- Storing data ---------- */
@@ -54,12 +54,16 @@ int main(int argc, char **argv)
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
 
+  double start_time = 0.0;
+  double end_time = 0.0;
+
   struct __mv_sparse *mat_A = NULL;
   struct __mv_sparse *vec_b = NULL;
   struct __mv_sparse *vec_x = NULL;
 
   struct __mv_sparse *d_mat_A = NULL;
   struct __mv_sparse *d_vec_b = NULL;
+  //struct __mv_sparse *d_vec_x = NULL;
 
   MPI_Init(&argc, &argv);
 
@@ -83,30 +87,38 @@ int main(int argc, char **argv)
   /* Initialize matrix A and vector b */
   mat_A = new_mv_struct();
   vec_b = new_mv_struct();
-  vec_x = NULL;
 
   /* Read input */
   read_input_file(input_file, mat_A, vec_b);
-
-  /* Test MV Ops */
-  //test_mv_ops(mat_A, vec_b);
 
   END_ROOT_SECTION
 
   d_mat_A = distribute_matrix(mat_A);
   d_vec_b = distribute_vector(vec_b);
 
+  /* Test MV Ops */
+  test_mv_ops(d_mat_A, d_vec_b);
+
   /* Compute CG */
-  //time_t start = time(NULL);
-  //conj_grad(max_iterations, d_mat_A, d_vec_b, &vec_x);
-  //time_t end = time(NULL);
+  /*
+  if(g_mpi_rank == ROOT_RANK)
+    start_time = MPI_Wtime();
+
+  d_vec_x = conj_grad(max_iterations, d_mat_A, d_vec_b);
+
+  if(g_mpi_rank == ROOT_RANK)
+    end_time = MPI_Wtime();  
+
+  vec_x = gather_vector(d_vec_x);
+  MPI_Barrier(MPI_COMM_WORLD);
+  */
 
   BEGIN_ROOT_SECTION
 
-    //printf("CG took approx %d seconds\n", (int)(end - start));
+    //printf("CG took approx %f seconds\n", end_time - start_time);
 
   /* Print result */
-  print_sparse(vec_x);
+  //print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);
@@ -120,7 +132,7 @@ int main(int argc, char **argv)
 }
 
 /* ---------- Conjugate Gradient ---------- */
-int conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __mv_sparse *vec_b, struct __mv_sparse **vec_x)
+struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
 {
   int k;
   struct __mv_sparse *vec_s, *vec_r, *vec_prev_r, *vec_p;
@@ -135,10 +147,12 @@ int conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __mv_sparse *vec_b
   vec_prev_r = NULL;
   vec_p = NULL;
 
-  vx_old = NULL;
-  vx_new = new_mv_struct_with_size(vec_b->size);
+  printf("[rank %d] entered conj_grad\n", g_mpi_rank);
 
-  k = 0;             /* current number of iterations */
+  vx_old = NULL;
+  vx_new = new_mv_struct_with_size(vec_b->size / g_mpi_group_size);
+
+  k = 0;                           /* current number of iterations */
   vec_r = mv_deep_copy(vec_b);     /* residual */
   vec_p = mv_deep_copy(vec_r);
 
@@ -169,10 +183,8 @@ int conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __mv_sparse *vec_b
     k++;
   }
 
-  /* Return result */
-  *vec_x = vx_new;
-  
-  return 0;
+  printf("[rank %d] exiting conj_grad\n", g_mpi_rank);
+  return vx_new;
 }
 
 
@@ -393,30 +405,32 @@ double stack_to_double()
 int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
 {
   struct __mv_sparse *vec_x = NULL;
+  struct __mv_sparse *d_vec_x = NULL;
 
-  //printf("mat_A\n");
-  //print_sparse(mat_A);
-
-  //printf("vec_b\n");
-  //print_sparse(vec_b);
+  //print_sparse(mat_A, "d_mat_A");
+  //print_sparse(vec_b, "d_vec_b");
 
   mv_mult(mat_A, vec_b, &vec_x);
-  printf("vec_x (mv_mult)\n");
-  print_sparse(vec_x);
+  vec_x = gather_vector(d_vec_x);
+  print_sparse(vec_x, "vec_x (mv_mult)");
 
-  sv_mult(4.0, vec_b, &vec_x);
-  printf("vec_x (sv_mult)\n");
-  print_sparse(vec_x);
+  /*
+  sv_mult(4.0, vec_b, &d_vec_x);
+  vec_x = gather_vector(d_vec_x);
+  print_sparse(vec_x, "vec_x (sv_mult)");
+  */
 
-  printf("dot product: %f\n", dot_product(vec_b, vec_b));
+  //printf("[rank %d] dot product: %f\n", g_mpi_rank, dot_product(vec_b, vec_b));
 
-  vec_add(vec_b, vec_b, &vec_x);
-  printf("vec_x (vec_add)\n");
-  print_sparse(vec_x);
+  /*
+  vec_add(vec_b, vec_b, &d_vec_x);
+  vec_x = gather_vector(d_vec_x);
+  print_sparse(vec_x, "vec_x (vec_add)");
 
-  vec_sub(vec_b, vec_b, &vec_x);
-  printf("vec_x (vec_sub)\n");
-  print_sparse(vec_x);
+  vec_sub(vec_b, vec_b, &d_vec_x);
+  vec_x = gather_vector(d_vec_x);
+  print_sparse(vec_x, "vec_x (vec_sub)");
+  */
 
   return 0;
 }
