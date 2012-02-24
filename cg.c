@@ -158,41 +158,29 @@ struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __
 
   while(TRUE) {
     mv_mult(mat_A, vec_p, &vec_s);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "mv_mult");
 
     sca_alpha = dot_product(vec_r, vec_r) / dot_product(vec_p, vec_s);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k,  "dot_product");
-
     sv_mult(sca_alpha, vec_p, &sv_res);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult");
 
     vx_old = mv_deep_copy(vx_new);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "deep_copy");
 
     vec_add(vx_old, sv_res, &vx_new);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_add");
-
-    vec_prev_r = mv_deep_copy(vec_r);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "deep_copy 2");
-
-    sv_mult(sca_alpha, vec_s, &sv_res);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult 2");
-
-    vec_sub(vec_r, sv_res, &vec_r);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_sub");
 
     if(k == max_iter) {
       break;
     }
 
+    vec_prev_r = mv_deep_copy(vec_r);
+
+    sv_mult(sca_alpha, vec_s, &sv_res);
+
+    vec_sub(vec_r, sv_res, &vec_r);
+
     sca_beta = dot_product(vec_r, vec_r) / dot_product(vec_prev_r, vec_prev_r);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "dot_product 2");
 
     sv_mult(sca_beta, vec_p, &sv_res);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "sv_mult 3");
 
     vec_add(vec_r, sv_res, &vec_p);
-    //printf("[rank %d:%d]\t%s\n", g_mpi_rank, k, "vec_add 2");
 
     k++;
   }
@@ -417,33 +405,25 @@ double stack_to_double()
 
 int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
 {
-  //struct __mv_sparse *vec_x = NULL;
-  //struct __mv_sparse *d_vec_x = NULL;
+  struct __mv_sparse *vec_x = NULL;
+  struct __mv_sparse *d_vec_x = NULL;
 
-  //print_sparse(mat_A, "d_mat_A");
-  //print_sparse(vec_b, "d_vec_b");
+  print_sparse(mat_A, "d_mat_A");
+  print_sparse(vec_b, "d_vec_b");
 
-  /*
-  print_sparse(vec_b, "vec_b (gatherAll_vector)");
   vec_x = gatherAll_vector(vec_b);
   print_sparse(vec_x, "vec_x (gatherAll_vector)");
-  */
 
-  /*
   mv_mult(mat_A, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (mv_mult)");
-  */
 
-  /*
   sv_mult(4.0, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (sv_mult)");
-  */
 
-  //printf("[rank %d] dot product: %f\n", g_mpi_rank, dot_product(vec_b, vec_b));
+  printf("[rank %d] dot product: %f\n", g_mpi_rank, dot_product(vec_b, vec_b));
 
-  /*
   vec_add(vec_b, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (vec_add)");
@@ -451,7 +431,6 @@ int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
   vec_sub(vec_b, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (vec_sub)");
-  */
 
   return 0;
 }

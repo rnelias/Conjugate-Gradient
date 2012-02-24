@@ -16,7 +16,7 @@ clean:
 	rm -rf *~
 
 sync:
-	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:~/p2
+	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:cg
 
 run-test_mv_ops:
 	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30

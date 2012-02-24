@@ -292,11 +292,12 @@ double dot_product(struct __mv_sparse *vec_a, struct __mv_sparse *vec_b)
   if(vec_a->size != vec_b->size)
     return -1.0;
 
-  for(i = 0; i < vec_a->nval; i++)
+  for(i = 0; i < vec_a->nval; i++) {
     dp_res += vec_a->values[i] * vec_b->values[i];
+  }
 
-  MPI_Reduce(&dp_res, &g_dp_res, 1, MPI_DOUBLE
-             , MPI_SUM, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Allreduce(&dp_res, &g_dp_res, 1, MPI_DOUBLE
+             , MPI_SUM, MPI_COMM_WORLD);
 
   return g_dp_res;
 }
@@ -341,7 +342,6 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
   int i = 0, j = 0;
 
   double dp_res = 0.0;
-  double row_dp_res = 0.0;
 
   if(!d_mat_A || !d_vec_b)
     return -1;
@@ -374,7 +374,7 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
 
   int nrow = d_mat_A->end - d_mat_A->start;
   for(i = 0; i < nrow; i++) {
-    row_dp_res = 0.0;
+    dp_res = 0.0;
 
     bzero(curr_row, d_vec_b->nval * sizeof(double));
     mat_get_row(d_mat_A, i, curr_row);
