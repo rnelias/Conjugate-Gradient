@@ -8,6 +8,9 @@ NUM_PROCS=5
 all:
 	${CC} ${CFLAGS} ${LIBS} -o ${PROG_NAME} ${OBJS}
 
+debug:
+	${CC} ${CFLAGS} -DDEBUG ${LIBS} -o ${PROG_NAME} ${OBJS}
+
 clean:
 	rm -rf ${PROG_NAME}
 	rm -rf ${PROG_NAME}.dSYM

@@ -257,20 +257,38 @@ void print_sparse(struct __mv_sparse *sparse_obj, const char *obj_tag)
   printf("\tNVal: %d\n", sparse_obj->nval);
 
   printf("\tValues: %p\n", sparse_obj->values);
-  for(i = 0; i < sparse_obj->nval; i++)
+  for(i = 0; i < 10; i++)
     printf("\t%f\n", sparse_obj->values[i]);
 
+  printf("\tRow pointers: %p\n", sparse_obj->row_ptr);
+  if(sparse_obj->row_ptr != NULL) {
+    for(i = 0; i < 10; i++)
+      printf("\t%d\n", sparse_obj->row_ptr[i]);
+  }
+
+  printf("\tColumn indices: %p\n", sparse_obj->col_indices);
+  if(sparse_obj->col_indices != NULL) {
+    for(i = 0; i < 10; i++)
+      printf("\t%d\n", sparse_obj->col_indices[i]);
+  }
 }
 
 /* ---------- Accessing Matrix Rows ---------- */
 int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
 {
   int ci, i;
+  
+  CG_PRINTF("mat_get_row -> mat_A: %p, row_id: %d, p_row: %p\n", mat_A, row_id, p_row);
 
   if(!mat_A || !p_row)
     return -1;
 
-  ci = mat_A->row_ptr[row_id] - (g_mpi_rank * mat_A->size);
+
+  //ci = mat_A->row_ptr[row_id] - (g_mpi_rank * mat_A->size);
+  ci = mat_A->row_ptr[row_id] - mat_A->row_ptr[0];
+  CG_PRINTF("mat_get_row -> mat_A->row_ptr[%d]: %d\n", row_id, mat_A->row_ptr[row_id]);
+  CG_PRINTF("mat_get_row -> mat_A->size: %d\n", mat_A->size);
+  CG_PRINTF("mat_get_row -> ci: %d\n", ci);
   
   for(i = 0; i < mat_A->size; i++) {
     p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
@@ -343,6 +361,8 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
 
   double dp_res = 0.0;
 
+  CG_PRINTF("mv_mult -> d_mat_A: %p, d_vec_b: %p, *d_vec_r: %p\n", d_mat_A, d_vec_b, *d_vec_r);
+
   if(!d_mat_A || !d_vec_b)
     return -1;
 
@@ -370,14 +390,19 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
 
   curr_row = (double *)calloc(d_vec_b->size, sizeof(double));
 
+  CG_PRINT("mv_mult: going to gatherAll\n");
   vec_x = gatherAll_vector(d_vec_b);
+  CG_PRINT("mv_mult: finished gatherAll\n");
 
   int nrow = d_mat_A->end - d_mat_A->start;
+  CG_PRINTF("mv_mult -> nrow: %d\n", nrow);
   for(i = 0; i < nrow; i++) {
     dp_res = 0.0;
+    CG_PRINTF("processing row %d\n", i);
 
-    bzero(curr_row, d_vec_b->nval * sizeof(double));
+    //bzero(curr_row, d_vec_b->nval * sizeof(double));
     mat_get_row(d_mat_A, i, curr_row);
+    CG_PRINTF("mv_mult -> got row %d\n", i);
     
     for(j = 0; j < vec_x->size; j++) {
       dp_res += curr_row[j] * vec_x->values[j];
@@ -385,9 +410,9 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
     
     (*d_vec_r)->values[i] = dp_res;
   }
-
+  
   free(curr_row);
-
+  
   return 0;
 }
 

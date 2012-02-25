@@ -17,6 +17,14 @@
 
 #define ROOT_RANK 0
 
+#ifdef DEBUG
+#define CG_PRINT(str) printf("[rank %d] " str, g_mpi_rank)
+#define CG_PRINTF(fmt,...) printf("[rank %d] " fmt, g_mpi_rank, __VA_ARGS__)
+#else
+#define CG_PRINT(str)
+#define CG_PRINTF(fmt,...)
+#endif
+
 struct __mv_sparse {
   int size;
   int nnz;

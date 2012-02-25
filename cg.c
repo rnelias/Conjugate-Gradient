@@ -20,6 +20,14 @@
 #define FALSE 0
 #endif
 
+#ifdef DEBUG
+#define CG_PRINT(str) printf("[rank %d] " str, g_mpi_rank)
+#define CG_PRINTF(fmt,...) printf("[rank %d] " fmt, g_mpi_rank, __VA_ARGS__)
+#else
+#define CG_PRINT(str)
+#define CG_PRINTF(fmt,...)
+#endif
+
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
 struct __mv_sparse *conj_grad(int, struct __mv_sparse *, struct __mv_sparse *);
@@ -92,9 +100,12 @@ int main(int argc, char **argv)
   d_max_iter = max_iterations;
 
   /* Read input */
+  CG_PRINT("reading input... ");
   read_input_file(input_file, mat_A, vec_b);
+  CG_PRINT("done\n");
 
   END_ROOT_SECTION
+
 
   MPI_Bcast(&d_max_iter, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
 
@@ -108,6 +119,7 @@ int main(int argc, char **argv)
   if(g_mpi_rank == ROOT_RANK)
     start_time = MPI_Wtime();
 
+  CG_PRINT("going to CG\n");
   d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
 
   if(g_mpi_rank == ROOT_RANK)
@@ -157,14 +169,19 @@ struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __
   vec_p = mv_deep_copy(vec_r);
 
   while(TRUE) {
+    CG_PRINTF("iteration %d\n", k);
+
     mv_mult(mat_A, vec_p, &vec_s);
+    CG_PRINT("mv_mult\n");
 
     sca_alpha = dot_product(vec_r, vec_r) / dot_product(vec_p, vec_s);
     sv_mult(sca_alpha, vec_p, &sv_res);
+    CG_PRINT("sv_mult 1\n");
 
     vx_old = mv_deep_copy(vx_new);
 
     vec_add(vx_old, sv_res, &vx_new);
+    CG_PRINT("vec_add 1\n");
 
     if(k == max_iter) {
       break;
@@ -173,14 +190,17 @@ struct __mv_sparse *conj_grad(int max_iter, struct __mv_sparse *mat_A, struct __
     vec_prev_r = mv_deep_copy(vec_r);
 
     sv_mult(sca_alpha, vec_s, &sv_res);
+    CG_PRINT("sv_mult 2\n");
 
     vec_sub(vec_r, sv_res, &vec_r);
 
     sca_beta = dot_product(vec_r, vec_r) / dot_product(vec_prev_r, vec_prev_r);
 
     sv_mult(sca_beta, vec_p, &sv_res);
+    CG_PRINT("sv_mult 3\n");
 
     vec_add(vec_r, sv_res, &vec_p);
+    CG_PRINT("vec_add 2\n");
 
     k++;
   }
