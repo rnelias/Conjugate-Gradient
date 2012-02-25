@@ -10,8 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <mpi.h>
+#include <omp.h>
 
 #include "mv_ops.h"
 
@@ -99,6 +99,7 @@ int main(int argc, char **argv)
 
   d_max_iter = max_iterations;
 
+
   /* Read input */
   CG_PRINT("reading input... ");
   read_input_file(input_file, mat_A, vec_b);
@@ -106,6 +107,10 @@ int main(int argc, char **argv)
 
   END_ROOT_SECTION
 
+  omp_set_num_threads(19);
+
+  CG_PRINTF("number of MPI nodes: %d\n", g_mpi_group_size);
+  CG_PRINTF("max OMP threads: %d\n", omp_get_max_threads());
 
   MPI_Bcast(&d_max_iter, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
 
@@ -428,16 +433,21 @@ int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
   struct __mv_sparse *vec_x = NULL;
   struct __mv_sparse *d_vec_x = NULL;
 
+  /*
   print_sparse(mat_A, "d_mat_A");
   print_sparse(vec_b, "d_vec_b");
+  */
 
+  /*
   vec_x = gatherAll_vector(vec_b);
   print_sparse(vec_x, "vec_x (gatherAll_vector)");
+  */
 
   mv_mult(mat_A, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (mv_mult)");
 
+  /*
   sv_mult(4.0, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (sv_mult)");
@@ -451,6 +461,7 @@ int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
   vec_sub(vec_b, vec_b, &d_vec_x);
   vec_x = gather_vector(d_vec_x);
   print_sparse(vec_x, "vec_x (vec_sub)");
+  */
 
   return 0;
 }

@@ -257,7 +257,7 @@ void print_sparse(struct __mv_sparse *sparse_obj, const char *obj_tag)
   printf("\tNVal: %d\n", sparse_obj->nval);
 
   printf("\tValues: %p\n", sparse_obj->values);
-  for(i = 0; i < 10; i++)
+  for(i = 0; i < sparse_obj->nval; i++)
     printf("\t%f\n", sparse_obj->values[i]);
 
   printf("\tRow pointers: %p\n", sparse_obj->row_ptr);
@@ -290,7 +290,6 @@ int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
   CG_PRINTF("mat_get_row -> mat_A->size: %d\n", mat_A->size);
   CG_PRINTF("mat_get_row -> ci: %d\n", ci);
   
-  /* TODO:  #pragma omp parallel for */
   for(i = 0; i < mat_A->size; i++) {
     p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
   }
@@ -399,14 +398,13 @@ int mv_mult(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b, struct __m
   
   int nrow = d_mat_A->end - d_mat_A->start;
   CG_PRINTF("mv_mult -> nrow: %d\n", nrow);
-  
+
 #pragma omp parallel for                        \
-  default(shared) private(i,curr_row)
+  default(shared) private(i,curr_row,dp_res)
   for(i = 0; i < nrow; i++) {
     dp_res = 0.0;
     CG_PRINTF("processing row %d\n", i);
     
-    //bzero(curr_row, d_vec_b->nval * sizeof(double));
     curr_row = (double *)calloc(d_vec_b->size, sizeof(double));
     mat_get_row(d_mat_A, i, curr_row);
     CG_PRINTF("mv_mult -> got row %d\n", i);
