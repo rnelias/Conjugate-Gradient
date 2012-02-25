@@ -18,13 +18,13 @@ sync:
 	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:~/p2
 
 run-test:
-	mpiexec -n 5 ./cg input/test.txt 30
+	./cg input/test.txt 30
 
 run-test-suppressed:
-	mpiexec -n 5 ./cg input/test.txt 30 n
+	./cg input/test.txt 30 n
 
 run-full:
-	mpiexec -n 100 ./cg input/Ab.txt 30
+	./cg input/Ab.txt 30
 
 run-full-suppressed:
-	mpiexec -n 100 ./cg input/Ab.txt 30 n
+	./cg input/Ab.txt 30 n
