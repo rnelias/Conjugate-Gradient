@@ -129,10 +129,10 @@ int main(int argc, char **argv)
 
   BEGIN_ROOT_SECTION
 
-  printf("CG took approx %f seconds\n", end_time - start_time);
+  printf("CG took approx %f seconds on %d nodes\n", end_time - start_time, g_mpi_group_size);
 
   /* Print result */
-  print_sparse(vec_x, "vec_x (result)");
+  //print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);
