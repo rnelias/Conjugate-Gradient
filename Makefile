@@ -25,13 +25,13 @@ run-test_mv_ops:
 	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30
 
 run-test:
-	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30
+	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30
 
 run-test-suppressed:
-	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 n
+	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 n
 
 run-full:
-	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30
+	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30
 
 run-full-suppressed:
-	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 n
+	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 n

@@ -107,8 +107,6 @@ int main(int argc, char **argv)
 
   END_ROOT_SECTION
 
-  omp_set_num_threads(19);
-
   CG_PRINTF("number of MPI nodes: %d\n", g_mpi_group_size);
   CG_PRINTF("max OMP threads: %d\n", omp_get_max_threads());
 
@@ -134,10 +132,13 @@ int main(int argc, char **argv)
 
   BEGIN_ROOT_SECTION
 
-  printf("CG took approx %f seconds\n", end_time - start_time);
+  printf("CG took approx %f seconds on %d nodes with %d threads available\n"
+         , end_time - start_time
+         , g_mpi_group_size
+         , omp_get_max_threads());
 
   /* Print result */
-  print_sparse(vec_x, "vec_x (result)");
+  //print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);
