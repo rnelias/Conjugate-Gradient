@@ -10,7 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <omp.h>
+#include <mach/mach_time.h>
 
 #include "mv_ops.h"
 
@@ -44,6 +45,11 @@ int main(int argc, char **argv)
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
 
+  /* For timing */
+  double elapsedSec;
+  uint64_t start, end, elapsed;
+  static mach_timebase_info_data_t sTimebaseInfo;
+
   /* Process command arguments */
   if(argc < 3) {
     fprintf(stderr, "Usage: %s <input-data> <max-iterations> [suppress-output]\n", argv[0]);
@@ -68,13 +74,21 @@ int main(int argc, char **argv)
   //test_mv_ops(mat_A, vec_b);
 
   /* Compute CG */
-  time_t start = time(NULL);
+  start = mach_absolute_time();
   conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-  time_t end = time(NULL);
-  printf("Serial+OMP CG took about %d seconds\n", (int)(end - start));
+  end = mach_absolute_time();
+
+  if ( sTimebaseInfo.denom == 0 ) {
+    (void) mach_timebase_info(&sTimebaseInfo);
+  }    
+
+  elapsed = end - start;
+  elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
+
+  printf("OMP CG took %f seconds with %d threads available\n", elapsedSec, omp_get_max_threads());
 
   /* Print result */
-  print_sparse(vec_x);
+  //print_sparse(vec_x);
 
   /* Clean Up */
   free_mv_struct(mat_A);

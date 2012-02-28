@@ -105,7 +105,6 @@ int mat_get_row(struct __mv_sparse *mat_A, int row_id, double *p_row)
 
   ci = mat_A->row_ptr[row_id];
   
-  /* TODO:  #pragma omp parallel for */
   for(i = 0; i < mat_A->size; i++) {
     p_row[i] = mat_A->col_indices[ci] == i ? mat_A->values[ci++] : 0.0;
   }
@@ -126,8 +125,8 @@ double dot_product(struct __mv_sparse *vec_a, struct __mv_sparse *vec_b)
   if(vec_a->size != vec_b->size)
     return -1.0;
 
-#pragma omp parallel for               \
-            default(shared) private(i) \
+#pragma omp parallel for                              \
+            default(shared) private(i)                \
             reduction(+:dp_res)
   for(i = 0; i < vec_a->size; i++)
     dp_res += vec_a->values[i] * vec_b->values[i];
