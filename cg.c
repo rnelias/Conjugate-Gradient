@@ -11,7 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <omp.h>
+
+#ifdef __APPLE__
 #include <mach/mach_time.h>
+#else
+#include <time.h>
+#endif
 
 #include "mv_ops.h"
 
@@ -50,8 +55,14 @@ int main(int argc, char **argv)
 
   /* For timing */
   double elapsedSec;
+#ifdef __APPLE__
   uint64_t start, end, elapsed;
   static mach_timebase_info_data_t sTimebaseInfo;
+#else
+  struct timespec start_tp, end_tp;
+  long int diffNano;
+  int diffSec;
+#endif
 
   /* Process command arguments */
   if(argc < 3) {
@@ -82,18 +93,36 @@ int main(int argc, char **argv)
 
   /* Compute CG */
   for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+#ifdef __APPLE__
     start = mach_absolute_time();
     conj_grad(max_iterations, mat_A, vec_b, &vec_x);
     end = mach_absolute_time();
-    
+#else
+    clock_gettime(CLOCK_REALTIME, &start_tp);
+    conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+    clock_gettime(CLOCK_REALTIME, &end_tp);
+#endif
+
+#ifdef __APPLE__    
     if ( sTimebaseInfo.denom == 0 ) {
       (void) mach_timebase_info(&sTimebaseInfo);
-    }    
+    }
 
     elapsed = end - start;
     elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
+#else
+    diffSec = (int)(end_tp.tv_sec - start_tp.tv_sec);
+    if(end_tp.tv_nsec >= start_tp.tv_nsec) {
+      diffNano = end_tp.tv_nsec - start_tp.tv_nsec;
+    } else {
+      diffNano = start_tp.tv_nsec - end_tp.tv_nsec;
+    }
 
-    printf("Execution %d -> Configuration: OMP | Time: %f seconds | %d threads available\n", exec_count+1, elapsedSec, omp_get_max_threads());
+    elapsedSec = diffNano / 1000000000.0;
+    elapsedSec += diffSec;
+#endif
+
+    printf("Execution %d -> Configuration: OMP | Time: %f sec | %d threads available\n", exec_count+1, elapsedSec, omp_get_max_threads());   
 
     /* Print result */
     //print_sparse(vec_x);

@@ -15,7 +15,7 @@ clean:
 	rm -rf *~
 
 sync:
-	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:~/p2
+	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:cg
 
 run-test:
 	@./cg input/test.txt 30
