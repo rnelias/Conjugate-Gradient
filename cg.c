@@ -28,6 +28,8 @@
 #define CG_PRINTF(fmt,...)
 #endif
 
+#define MAX_EXECUTION_COUNT 5
+
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
 struct __mv_sparse *conj_grad(int, struct __mv_sparse *, struct __mv_sparse *);
@@ -62,6 +64,7 @@ int main(int argc, char **argv)
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
   int d_max_iter = -1;
+  int exec_count = 0;
 
   double start_time = 0.0;
   double end_time = 0.0;
@@ -118,27 +121,34 @@ int main(int argc, char **argv)
   /* Test MV Ops */
   //test_mv_ops(d_mat_A, d_vec_b);
 
-  /* Compute CG */
-  if(g_mpi_rank == ROOT_RANK)
-    start_time = MPI_Wtime();
+  for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+    /* Compute CG */
+    if(g_mpi_rank == ROOT_RANK)
+      start_time = MPI_Wtime();
+    
+    CG_PRINT("going to CG\n");
+    d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
 
-  CG_PRINT("going to CG\n");
-  d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
+    if(g_mpi_rank == ROOT_RANK)
+      end_time = MPI_Wtime();  
+    
+    vec_x = gather_vector(d_vec_x);
+    
+    BEGIN_ROOT_SECTION
 
-  if(g_mpi_rank == ROOT_RANK)
-    end_time = MPI_Wtime();  
+    printf("Execution #%d -> Config: OMP+MPI | Time: %f seconds | Nodes: %d | Threads: %d\n"
+           , exec_count+1
+           , end_time - start_time
+           , g_mpi_group_size
+           , omp_get_max_threads());
+    
+    /* Print result */
+    //print_sparse(vec_x, "vec_x (result)");
 
-  vec_x = gather_vector(d_vec_x);
+    END_ROOT_SECTION
+  }
 
   BEGIN_ROOT_SECTION
-
-  printf("CG took approx %f seconds on %d nodes with %d threads available\n"
-         , end_time - start_time
-         , g_mpi_group_size
-         , omp_get_max_threads());
-
-  /* Print result */
-  //print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);
