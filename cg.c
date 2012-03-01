@@ -20,6 +20,8 @@
 #define FALSE 0
 #endif
 
+#define MAX_EXECUTION_COUNT 5
+
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
 int conj_grad(int, struct __mv_sparse *, struct __mv_sparse *, struct __mv_sparse **);
@@ -44,6 +46,7 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
+  int exec_count = 0;
 
   /* For timing */
   double elapsedSec;
@@ -68,27 +71,37 @@ int main(int argc, char **argv)
   struct __mv_sparse *vec_x = NULL;
 
   /* Read input */
+  printf("Reading in data... ");
+  fflush(stdout);
   read_input_file(input_file, mat_A, vec_b);
+  printf("Done\n");
+  fflush(stdout);
 
   /* Test MV Ops */
   //test_mv_ops(mat_A, vec_b);
 
   /* Compute CG */
-  start = mach_absolute_time();
-  conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-  end = mach_absolute_time();
+  for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+    start = mach_absolute_time();
+    conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+    end = mach_absolute_time();
+    
+    if ( sTimebaseInfo.denom == 0 ) {
+      (void) mach_timebase_info(&sTimebaseInfo);
+    }    
 
-  if ( sTimebaseInfo.denom == 0 ) {
-    (void) mach_timebase_info(&sTimebaseInfo);
-  }    
+    elapsed = end - start;
+    elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
 
-  elapsed = end - start;
-  elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
+    printf("Execution %d -> Configuration: OMP | Time: %f seconds | %d threads available\n", exec_count+1, elapsedSec, omp_get_max_threads());
 
-  printf("OMP CG took %f seconds with %d threads available\n", elapsedSec, omp_get_max_threads());
+    /* Print result */
+    //print_sparse(vec_x);
 
-  /* Print result */
-  //print_sparse(vec_x);
+    free_mv_struct(vec_x);
+    vec_x = NULL;
+  }
+
 
   /* Clean Up */
   free_mv_struct(mat_A);
