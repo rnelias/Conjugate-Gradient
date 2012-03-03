@@ -13,11 +13,14 @@
 #include <time.h>
 
 #include "mv_ops.h"
+#include "cu_ops.h"
 
 #ifndef TRUE
 #define TRUE 1
 #define FALSE 0
 #endif
+
+#define MAX_EXECUTION_COUNT 5
 
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
@@ -43,6 +46,13 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
+  int exec_count = 0;
+
+  /* For timing */
+  double elapsedSec;
+  struct timespec start_tp, end_tp;
+  long int diffNano;
+  int diffSec;
 
   /* Process command arguments */
   if(argc < 3) {
@@ -62,20 +72,39 @@ int main(int argc, char **argv)
   struct __mv_sparse *vec_x = NULL;
 
   /* Read input */
+  printf("Reading in data... ");
+  fflush(stdout);
   read_input_file(input_file, mat_A, vec_b);
+  printf("Done\n");
+  fflush(stdout);
 
   /* Test MV Ops */
   //test_mv_ops(mat_A, vec_b);
 
   /* Compute CG */
-  time_t start = time(NULL);
-  conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-  time_t end = time(NULL);
+  /*
+  for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+    clock_gettime(CLOCK_REALTIME, &start_tp);
+    conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+    clock_gettime(CLOCK_REALTIME, &end_tp);
 
-  printf("CG took approx %d seconds\n", (int)(end - start));
+    diffSec = (int)(end_tp.tv_sec - start_tp.tv_sec);
+    if(end_tp.tv_nsec >= start_tp.tv_nsec) {
+      diffNano = end_tp.tv_nsec - start_tp.tv_nsec;
+    } else {
+      diffNano = start_tp.tv_nsec - end_tp.tv_nsec;
+    }
 
-  /* Print result */
-  print_sparse(vec_x);
+    elapsedSec = diffNano / 1000000000.0;
+    elapsedSec += diffSec;
+
+    printf("Execution %d -> Configuration: CUDA | Time: %f sec\n", exec_count+1, elapsedSec);
+    //print_sparse(vec_x);
+
+    free_mv_struct(vec_x);
+    vec_x = NULL;
+  }
+  */
 
   /* Clean Up */
   free_mv_struct(mat_A);

@@ -1,6 +1,6 @@
 EXECUTABLE := cg
-CUFILES	   := mv_ops.cu
-CCFILES	   := cg.c
+CUFILES	   := cg.cu cu_ops.cu mv_ops.cu
+CCFILES	   := 
 
 include ./common.mk
 

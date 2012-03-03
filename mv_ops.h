@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* CUDA */
+//#include <cuda_runtime_api.h>
+
 struct __mv_sparse {
   int size;
   int nnz;
