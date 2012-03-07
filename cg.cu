@@ -12,8 +12,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "mv_ops.h"
-#include "cu_ops.h"
+#include "mv_ops.cu"
+#include "cu_ops.cu"
 
 #ifndef TRUE
 #define TRUE 1
@@ -66,6 +66,9 @@ int main(int argc, char **argv)
   if(argc == 4)
     no_output = argv[3][0] == 'y' ? TRUE : FALSE;
 
+  /* Since we're working with compute capability 1.3 we need to use cuPrintf rather than printf */
+  cudaPrintfInit();
+
   /* Initialize matrix A and vector b */
   struct __mv_sparse *mat_A = new_mv_struct();
   struct __mv_sparse *vec_b = new_mv_struct();
@@ -73,13 +76,15 @@ int main(int argc, char **argv)
 
   /* Read input */
   printf("Reading in data... ");
-  fflush(stdout);
   read_input_file(input_file, mat_A, vec_b);
   printf("Done\n");
-  fflush(stdout);
+
+  /* Send data to GPU */
+  struct __mv_sparse *d_mat_A = cgCopyMatrix(mat_A);
+  struct __mv_sparse *d_vec_b = cgCopyVector(vec_b);
 
   /* Test MV Ops */
-  //test_mv_ops(mat_A, vec_b);
+  test_mv_ops(d_mat_A, d_vec_b);
 
   /* Compute CG */
   /*
@@ -105,6 +110,8 @@ int main(int argc, char **argv)
     vec_x = NULL;
   }
   */
+
+  cudaPrintfEnd();
 
   /* Clean Up */
   free_mv_struct(mat_A);
@@ -384,16 +391,18 @@ double stack_to_double()
   return strtod((char *)g_stack, NULL);
 }
 
-int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
+int test_mv_ops(struct __mv_sparse *d_mat_A, struct __mv_sparse *d_vec_b)
 {
-  struct __mv_sparse *vec_x = NULL;
+    //struct __mv_sparse *d_vec_x = NULL;
+    printf("test_mv_ops\n");
 
-  //printf("mat_A\n");
-  //print_sparse(mat_A);
 
-  //printf("vec_b\n");
-  //print_sparse(vec_b);
+    dim3 dimGrid(2, 2);
+    dim3 dimBlock(2, 2, 2);
+    cgPrintValues<<<dimGrid, dimBlock>>>(d_mat_A->values);
+    cudaPrintfDisplay(stdout, true);
 
+  /*
   mv_mult(mat_A, vec_b, &vec_x);
   printf("vec_x (mv_mult)\n");
   print_sparse(vec_x);
@@ -411,6 +420,7 @@ int test_mv_ops(struct __mv_sparse *mat_A, struct __mv_sparse *vec_b)
   vec_sub(vec_b, vec_b, &vec_x);
   printf("vec_x (vec_sub)\n");
   print_sparse(vec_x);
+  */
 
   return 0;
 }
