@@ -7,118 +7,169 @@
  *
  */
 
-#include "cu_ops.h"
+#include "cu_ops.cuh"
 #include "cuPrintf.cu"
 
-struct __mv_sparse *cgCopyMatrix(struct __mv_sparse *host_mat)
+/* ---------- Matrix-Vector Operations ---------- */
+
+__device__ void cgReduce(double *dp, int dp_size, double *dp_final)
 {
-    cudaError_t cudaResult;
-    struct __mv_sparse *dev_mat;
-
-    if(!host_mat)
-    {
-        fprintf(stderr, "Error: cgCopyMatrix given NULL host matrix pointer\n");
-        return NULL;
-    }
-
-    /* Allocate host memory for the main structure */
-    dev_mat = (struct __mv_sparse *)malloc(sizeof(struct __mv_sparse));
-    if(!dev_mat)
-    {
-        fprintf(stderr, "Error: Unable to allocate host memory for matrix structure\n");
-        return NULL;
-    }
-
-    /* Allocate device memory for values and copy to it */
-    cudaResult = cudaMalloc(&(dev_mat->values), host_mat->nnz * sizeof(double));
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unable to allocate device memory (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    cudaResult = cudaMemcpy(dev_mat->values, host_mat->values, host_mat->nnz * sizeof(double), cudaMemcpyHostToDevice);
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unable to copy host memory contents to device memory (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    /* Allocate device memory for the column index */
-    cudaResult = cudaMalloc(&(dev_mat->col_indices), host_mat->nnz * sizeof(int));
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unable to allocate device memory (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    cudaResult = cudaMemcpy(dev_mat->col_indices, host_mat->col_indices, host_mat->nnz * sizeof(int), cudaMemcpyHostToDevice);
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unable to copy host memory to device (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    /* Allocate device memory for row pointers and copy to it */
-    cudaResult = cudaMalloc(&(dev_mat->row_ptr), sizeof(int) * (host_mat->size + 1));
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unable to allocate device memory (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    cudaResult = cudaMemcpy(dev_mat->row_ptr, host_mat->row_ptr, sizeof(int) * (host_mat->size + 1), cudaMemcpyHostToDevice);
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error: Unablet to copy host memory to device (%d)\n", cudaResult);
-        return NULL;
-    }
-
-    return dev_mat;
+}
+ 
+__device__ void cgDotProduct(Vector vec_a, Vector vec_b, double *dp)
+{
+    int i = threadIdx.x;
+    dp[i] = vec_a.values[i] * vec_b.values[i];    
 }
 
-struct __mv_sparse *cgCopyVector(struct __mv_sparse *host_vec)
+__device__ void cgSVMult(int sca, Vector vec_a, Vector *vec_b)
+{
+    int i = threadIdx.x;
+    vec_b->values[i] = sca * vec_a.values[i];
+}
+
+__device__ void cgVecSub(Vector vec_a, Vector vec_b, Vector *vec_c)
+{
+    int i = threadIdx.x;
+    vec_c->values[i] = vec_a.values[i] - vec_b.values[i];
+}
+
+__device__ void cgVecAdd(Vector vec_a, Vector vec_b, Vector *vec_c)
+{
+    int i = threadIdx.x;
+    vec_c->values[i] = vec_a.values[i] + vec_b.values[i];
+}
+
+/* ---------- Copying between host and device ---------- */
+
+int cgCopyMatrix(Matrix *h_m, Matrix **d_m)
 {
     cudaError_t cudaResult;
-    struct __mv_sparse *dev_vec;
+    Matrix h_temp;
+    double *d_values;
+    int *d_column_indices, *d_row_pointers;
 
-    if(!host_vec)
-    {
-        fprintf(stderr, "Error: cgCopyVector given NULL host vector pointer\n");
-        return NULL;
-    }
-
-    /* Allocate for the main structure */
-    dev_vec = (struct __mv_sparse *)malloc(sizeof(struct __mv_sparse));
-    if(!dev_vec)
-    {
-        fprintf(stderr, "Error: Unable to allocate memory\n");
-        return NULL;
-    }
-
-    /* Allocate space for values and copy them */
-    cudaResult = cudaMalloc(&(dev_vec->values), sizeof(double) * host_vec->nnz);
+    /* Allocate space and copy values */
+    cudaResult = cudaMalloc(&d_values, sizeof(double) * h_m->nnz);
     if(cudaResult != cudaSuccess)
     {
-        fprintf(stderr, "Error: Unable to allocate memory on the device (%d)\n", cudaResult);
-        return NULL;
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
     }
 
-    cudaResult = cudaMemcpy(dev_vec->values, host_vec->values, sizeof(double) * host_vec->nnz, cudaMemcpyHostToDevice);
+    cudaResult = cudaMemcpy(d_values, h_m->values, sizeof(double) * h_m->nnz, cudaMemcpyHostToDevice);
     if(cudaResult != cudaSuccess)
     {
-        fprintf(stderr, "Error: Failed to copy memory to device (%d)\n", cudaResult);
-        return NULL;
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
     }
-   
-    return dev_vec;
+
+    /* Allocate space and copy column indices */
+    cudaResult = cudaMalloc(&d_column_indices, sizeof(int) * h_m->nnz);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    cudaResult = cudaMemcpy(d_column_indices, h_m->column_indices, sizeof(int) * h_m->nnz, cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    /* Allocate space and copy row pointers */
+    cudaResult = cudaMalloc(&d_row_pointers, sizeof(int) * (h_m->size + 1));
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    cudaResult = cudaMemcpy(d_row_pointers, h_m->row_pointers, sizeof(int) * (h_m->size + 1), cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+    
+    /* Allocate space on device for matrix structure */
+    cudaResult = cudaMalloc(d_m, sizeof(Matrix));
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    h_temp.size = h_m->size;
+    h_temp.nnz = h_m->nnz;
+    h_temp.values = d_values;
+    h_temp.column_indices = d_column_indices;
+    h_temp.row_pointers = d_row_pointers;
+
+    cudaResult = cudaMemcpy(*d_m, &h_temp, sizeof(Matrix), cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    return 0;
+}
+
+int cgCopyVector(Vector *h_v, Vector **d_v)
+{
+    cudaError_t cudaResult;
+    Vector h_temp;
+    double *d_values;
+
+    /* Allocate space and copy values */
+    cudaResult = cudaMalloc(&d_values, sizeof(double) * h_v->size);
+    if(cudaResult != cudaSuccess) 
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    cudaResult = cudaMemcpy(d_values, h_v->values, h_v->size * sizeof(double), cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess) 
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    /* Allocate space on the device for the vector structure */
+    h_temp.values = d_values;
+    h_temp.size = h_v->size;
+
+    cudaResult = cudaMalloc(d_v, sizeof(Vector));
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    cudaResult = cudaMemcpy(*d_v, &h_temp, sizeof(Vector), cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    return 0;
 }
 
 
 /* ---------- Helper Kernels ---------- */
 
-__global__ void cgPrintValues(double *d_values)
+/* Note: "Vector *v" produces a warning during compilation about NVCC not being able to deduce where the pointer points.  This 
+ * is because (1) cards with compute capability 1.x have separate address spaces for global and shared memory and (2) the pointer
+ * can actually point to either.  NVCC assumes global memory which (in this case) is correct.
+ */
+__global__ void cgPrintVector(Vector *v)
 {
     int i = threadIdx.x;
-    cuPrintf("Thread %d has value %f\n", i, d_values[i]);
+
+    cuPrintf("Thread %d has value %f\n", i, v->values[i]);
 }
