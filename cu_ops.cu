@@ -12,14 +12,42 @@
 
 /* ---------- Matrix-Vector Operations ---------- */
 
+__device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
+{
+    int i = threadIdx.x + (blockDim.x * threadIdx.y);
+    unsigned int j = 0;
+    double temp_res, row_res;
+    __shared__ double temp_mat[8][8];
+
+    temp_res = mat_A.values[i] * vec_b.values[threadIdx.x];
+    temp_mat[threadIdx.x][threadIdx.y] = temp_res;
+
+    cgReduce(temp_mat[threadIdx.y], blockDim.x, &row_res);
+    vec_c->values[threadIdx.y] = row_res;
+}
+
 __device__ void cgReduce(double *dp, int dp_size, double *dp_final)
 {
+    unsigned int s;
+    int tid = threadIdx.x;
+
+    for(s = 1; s < blockDim.x; s *= 2)
+    {
+        if(tid % (2*s) == 0)
+        {
+            dp[tid] += dp[tid + s];
+        }
+
+        __syncthreads();
+    }
+
+    *dp_final = dp[0];
 }
- 
+
 __device__ void cgDotProduct(Vector vec_a, Vector vec_b, double *dp)
 {
     int i = threadIdx.x;
-    dp[i] = vec_a.values[i] * vec_b.values[i];    
+    dp[i] = vec_a.values[i] * vec_b.values[i];
 }
 
 __device__ void cgSVMult(int sca, Vector vec_a, Vector *vec_b)

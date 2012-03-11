@@ -1,4 +1,4 @@
-/* cu_ops.h - CUDA helper functions
+/* cu_ops.cuh - CUDA helper functions
  *
  * CSC 564 - CG Assignment Series
  *
@@ -18,6 +18,7 @@ __device__ void cgVecSub(Vector vec_a, Vector vec_b, Vector *vec_c);
 __device__ void cgSVMult(int sca, Vector vec_a, Vector *vec_b);
 __device__ void cgDotProduct(Vector vec_a, Vector vec_b, double *dp);
 __device__ void cgReduce(double *dp, int dp_size, double *dp_final);
+__device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c);
 
 /* ---- Copying between the host and device ---- */
 int cgCopyVector(Vector *h_v, Vector **d_v);

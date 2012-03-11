@@ -21,7 +21,15 @@
 #define FALSE 0
 #endif
 
+/* Controls the number of times the CG is 
+ * executed (handy for collecting data) 
+ */
 #define MAX_EXECUTION_COUNT 1
+
+/* The size (height and width) of each thread
+ * block.  Currently this must be a power of two.
+ */
+#define BLOCK_SIZE 8
 
 __global__ void printStupidVector(Vector *v)
 {
@@ -57,7 +65,7 @@ int main(int argc, char **argv)
 
   /* Figure out the number of blocks and threads per block */
   int numBlocks = 1;
-  int threadsPerBlock = 5;
+  dim3 threadsPerBlock = dim3(BLOCK_SIZE, BLOCK_SIZE, 1);
 
   cudaError_t cudaResult;
 
@@ -120,22 +128,34 @@ __global__ void cgTestMVOps(Matrix *pmat_A, Vector *pvec_b)
 {
     int i = threadIdx.x;
     Vector vec_b, vec_c;
-    double dp[5], dp_res;
+    __shared__ double dp[5];
+    double dp_res;
+    Matrix mat_A;
 
-    cuPrintf("cgTestMVOps on thread %d\n", i);
+//    cuPrintf("cgMVMult: blockDim = (%d, %d, %d), threadIdx = (%d, %d, %d)\n"
+//             , blockDim.x, blockDim.y, blockDim.z
+//             , threadIdx.x, threadIdx.y, threadIdx.z);
 
+//    cuPrintf("cgTestMVOps on thread %d\n", i);
+
+    mat_A = *pmat_A;
     vec_b = *pvec_b;
 
     cgVecAdd(vec_b, vec_b, &vec_c);
-    cuPrintf("cgVecAdd: vec_c[%d] = %f\n", i, vec_c.values[i]);
+//    cuPrintf("cgVecAdd: vec_c[%d] = %f\n", i, vec_c.values[i]);
 
     cgVecSub(vec_b, vec_b, &vec_c);
-    cuPrintf("cgVecSub: vec_c[%d] = %f\n", i, vec_c.values[i]);
+//    cuPrintf("cgVecSub: vec_c[%d] = %f\n", i, vec_c.values[i]);
 
     cgSVMult(4, vec_b, &vec_c);
-    cuPrintf("cgSVMult: vec_c[%d] = %f\n", i, vec_c.values[i]);
+//    cuPrintf("cgSVMult: vec_c[%d] = %f\n", i, vec_c.values[i]);
 
     cgDotProduct(vec_b, vec_b, dp);
     cgReduce(dp, 5, &dp_res);
-    cuPrintf("cgDotProduct+cgReduce: %f\n", dp_res);
+//    cuPrintf("cgDotProduct+cgReduce: %f\n", dp_res);
+
+    cgMVMult(mat_A, vec_b, &vec_c);
+
+    if(threadIdx.x == 0)
+        cuPrintf("cgMVMult: vec_c[%d] = %f\n", i+threadIdx.y, vec_c.values[i+threadIdx.y]);
 }
