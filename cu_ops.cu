@@ -15,15 +15,18 @@
 __device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
 {
     int i = threadIdx.x + (blockDim.x * threadIdx.y);
-    unsigned int j = 0;
     double temp_res, row_res;
     __shared__ double temp_mat[8][8];
 
     temp_res = mat_A.values[i] * vec_b.values[threadIdx.x];
-    temp_mat[threadIdx.x][threadIdx.y] = temp_res;
+    temp_mat[threadIdx.y][threadIdx.x] = temp_res;
+    __syncthreads();
 
-    cgReduce(temp_mat[threadIdx.y], blockDim.x, &row_res);
-    vec_c->values[threadIdx.y] = row_res;
+    if(threadIdx.x == 0)
+    {
+        cgReduce(temp_mat[threadIdx.y], blockDim.x, &row_res);
+        vec_c->values[threadIdx.y] = row_res;
+    }
 }
 
 __device__ void cgReduce(double *dp, int dp_size, double *dp_final)
