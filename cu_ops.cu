@@ -14,19 +14,27 @@
 
 __device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
 {
-    int i = threadIdx.x + (blockDim.x * threadIdx.y);
+    int mx_idx = threadIdx.x + (blockDim.x * threadIdx.y);
+    int ve_idx = threadIdx.x;
+    unsigned int s = 0;
     double temp_res, row_res;
     __shared__ double temp_mat[8][8];
 
-    temp_res = mat_A.values[i] * vec_b.values[threadIdx.x];
+    temp_res = mat_A.values[mx_idx] * vec_b.values[ve_idx];
     temp_mat[threadIdx.y][threadIdx.x] = temp_res;
     __syncthreads();
 
-    if(threadIdx.x == 0)
+    for(s = 1; s < blockDim.x; s *= 2)
     {
-        cgReduce(temp_mat[threadIdx.y], blockDim.x, &row_res);
-        vec_c->values[threadIdx.y] = row_res;
+        if(ve_idx % (2*s) == 0)
+        {
+            temp_mat[threadIdx.y][threadIdx.x] += temp_mat[threadIdx.y][threadIdx.x + s];
+        }
     }
+    
+    row_res = temp_mat[threadIdx.y][0];
+    if(ve_idx == 0)
+        vec_c->values[threadIdx.y] = row_res;
 }
 
 __device__ void cgReduce(double *dp, int dp_size, double *dp_final)

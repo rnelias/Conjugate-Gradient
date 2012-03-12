@@ -24,7 +24,7 @@
 /* Controls the number of times the CG is 
  * executed (handy for collecting data) 
  */
-#define MAX_EXECUTION_COUNT 10
+#define MAX_EXECUTION_COUNT 1
 
 /* Controls the maximum number of CUDA threads
  * used for the CG computation.
@@ -81,9 +81,9 @@ int main(int argc, char **argv)
   cgCopyVector(&hv_b, &dv_b);
   
   /* Test MV Ops */
-  cgTestMVOps<<<numBlocks, threadsPerBlock>>>(dm_A, dv_b);
-  cudaThreadSynchronize();
-  cudaPrintfDisplay(stdout, true);
+  //cgTestMVOps<<<numBlocks, threadsPerBlock>>>(dm_A, dv_b);
+  //cudaThreadSynchronize();
+  //cudaPrintfDisplay(stdout, true);
   
   /* Compute CG */
   printf("\tThreads\tTime\n");
@@ -91,6 +91,7 @@ int main(int argc, char **argv)
   {
       cudaEventRecord(start, 0);
       cgConjGrad<<<numBlocks, threadsPerBlock>>>(max_iterations, dm_A, dv_b);
+      cudaPrintfDisplay(stdout, false);
       cudaEventRecord(stop, 0);
       cudaEventSynchronize(stop);
       
@@ -145,7 +146,7 @@ __global__ void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b)
 
 __global__ void cgTestMVOps(Matrix *pmat_A, Vector *pvec_b)
 {
-    //int i = threadIdx.x;
+    int i = threadIdx.x;
     Vector vec_b, vec_c;
     __shared__ double dp[5];
     double dp_res;
@@ -168,5 +169,6 @@ __global__ void cgTestMVOps(Matrix *pmat_A, Vector *pvec_b)
     //cuPrintf("cgDotProduct+cgReduce: %f\n", dp_res);
 
     cgMVMult(mat_A, vec_b, &vec_c);
-    //cuPrintf("cgMVMult: vec_c[%d] = %f\n", i, vec_c.values[i+threadIdx.y]);
+    //if(threadIdx.x == 0)
+    //    cuPrintf("cgMVMult: vec_c[%d] = %f\n", threadIdx.y, vec_c.values[threadIdx.y]);
 }
