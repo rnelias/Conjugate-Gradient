@@ -79,6 +79,70 @@ __device__ void cgVecAdd(Vector vec_a, Vector vec_b, Vector *vec_c)
     vec_c->values[i] = vec_a.values[i] + vec_b.values[i];
 }
 
+/* ---------- Device Memory Management ---------- */
+Vector **cgDeviceAllocateVectorArray(Vector **hv_array, int arr_size, Vector *hv_template)
+{
+    cudaError_t cudaResult;
+    Vector *dv_template, *dv_array;
+    int idx = 0;
+
+    for(idx = 0; idx < arr_size; idx++)
+    {
+        printf("-> Setting dv_template\n");
+        //cgCopyVector(hv_template, &dv_template);
+        cudaMalloc(&dv_template, sizeof(Vector));
+        cudaMemcpy(dv_template, hv_template, sizeof(Vector), cudaMemcpyHostToDevice);
+        hv_array[idx] = dv_template;
+        printf("-> Finished with dv_template\n");
+    }
+
+    /* Allocate and copy to device */
+    cudaResult = cudaMalloc(&dv_array, arr_size * sizeof(Vector *));
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgDeviceAllocateVectorArray-1: %s\n", cudaGetErrorString(cudaResult));
+        return NULL;
+    }
+
+    printf("dv_array: %p\n", dv_array);
+    printf("hv_array: %p\n", hv_array);
+    for(idx = 0; idx < arr_size; idx++)
+    {
+        printf("hv_array[%d]: %p\n", idx, hv_array[idx]);
+    }
+
+    cudaResult = cudaMemcpy(dv_array, hv_array, arr_size * sizeof(Vector *), cudaMemcpyHostToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgDeviceAllocateVectorArray-2: %s\n", cudaGetErrorString(cudaResult));
+        return NULL;
+    }
+
+    Vector *pdv_array;
+    cudaResult = cudaMalloc(&pdv_array, sizeof(Vector *));
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgDeviceAllocateVectorArray-3: %s\n", cudaGetErrorString(cudaResult));
+        return NULL;
+    }
+
+    cudaResult = cudaMemcpy(pdv_array, &dv_array, sizeof(Vector *), cudaMemcpyDeviceToDevice);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgDeviceAllocateVectorArray-4: %s\n", cudaGetErrorString(cudaResult));
+        return NULL;
+    }
+
+    return (Vector **)pdv_array;
+}
+
+__device__ void cgDeepCopy(Vector vec_a, Vector *pvec_b)
+{
+    pvec_b->size = vec_a.size;
+    if(threadIdx.x == 0)
+        pvec_b->values[threadIdx.y] = vec_a.values[threadIdx.y];    
+}
+
 /* ---------- Copying between host and device ---------- */
 
 int cgCopyMatrix(Matrix *h_m, Matrix **d_m)
@@ -157,6 +221,42 @@ int cgCopyMatrix(Matrix *h_m, Matrix **d_m)
     return 0;
 }
 
+int cgCopyVectorToHost(Vector *d_v, Vector *h_v)
+{
+    cudaError_t cudaResult;
+    double *h_values;
+    
+    printf("cgCopyVectorToHost: h_v -> %p\n", h_v);
+    printf("cgCopyVectorToHost: d_v -> %p\n", d_v);
+
+    cudaResult = cudaMemcpy(h_v, d_v, sizeof(Vector), cudaMemcpyDeviceToHost);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgCopyVectorToHost-1: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    h_values = (double *)calloc(h_v->size, sizeof(double));
+    if(!h_values)
+    {
+        fprintf(stderr, "Error: failed to allocate spcae for host values\n");
+        return -1;
+    }
+
+    printf("h_v->values: %p\n", h_v->values);
+
+    cudaResult = cudaMemcpy(h_values, h_v->values, h_v->size * sizeof(double), cudaMemcpyDeviceToHost);
+    if(cudaResult != cudaSuccess)
+    {
+        fprintf(stderr, "Error cgCopyVectorToHost-2: %s\n", cudaGetErrorString(cudaResult));
+        return -1;
+    }
+
+    h_v->values = h_values;
+
+    return 0;
+}
+
 int cgCopyVector(Vector *h_v, Vector **d_v)
 {
     cudaError_t cudaResult;
@@ -181,6 +281,7 @@ int cgCopyVector(Vector *h_v, Vector **d_v)
     /* Allocate space on the device for the vector structure */
     h_temp.values = d_values;
     h_temp.size = h_v->size;
+    printf("h_v->size: %d\n", h_v->size);
 
     cudaResult = cudaMalloc(d_v, sizeof(Vector));
     if(cudaResult != cudaSuccess)
@@ -196,6 +297,7 @@ int cgCopyVector(Vector *h_v, Vector **d_v)
         return -1;
     }
 
+    printf("cgCopyVector: %p\n", *d_v);
     return 0;
 }
 
