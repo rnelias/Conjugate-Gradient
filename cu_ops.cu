@@ -10,6 +10,8 @@
 #include "cu_ops.cuh"
 #include "cuPrintf.cu"
 
+#define BLOCK_SIZE 4
+
 /* ---------- Matrix-Vector Operations ---------- */
 
 __global__ void cgMVMult(Matrix *mat_A, Vector *vec_b, Vector *vec_c)
@@ -18,7 +20,7 @@ __global__ void cgMVMult(Matrix *mat_A, Vector *vec_b, Vector *vec_c)
     int ve_idx = threadIdx.x;
     unsigned int s = 0;
     double temp_res, row_res;
-    __shared__ double temp_mat[8][8];
+    __shared__ double temp_mat[BLOCK_SIZE][BLOCK_SIZE];
 
     temp_res = mat_A->values[mx_idx] * vec_b->values[ve_idx];
     temp_mat[threadIdx.y][threadIdx.x] = temp_res;
@@ -59,7 +61,7 @@ __global__ void cgDotProduct(Vector *vec_a, Vector *vec_b, double *dp_final)
 {
     unsigned int s;
     int i = threadIdx.x;
-    __shared__ double dp[8];
+    __shared__ double dp[BLOCK_SIZE];
 
     dp[i] = vec_a->values[i] * vec_b->values[i];
     __syncthreads();
@@ -77,89 +79,27 @@ __global__ void cgDotProduct(Vector *vec_a, Vector *vec_b, double *dp_final)
     *dp_final = dp[0];
 }
 
-__global__ void cgSVMult(int sca, Vector *vec_a, Vector *vec_b)
+__global__ void cgSVMult(double *sca, Vector *vec_a, Vector *vec_b)
 {
     int i = threadIdx.x;
-    vec_b->values[i] = sca * vec_a->values[i];
-    cuPrintf("vec_b->values[%d]: %f\n", i, vec_b->values[i]);
+    vec_b->values[i] = (*sca) * vec_a->values[i];
 }
 
 __global__ void cgVecSub(Vector *vec_a, Vector *vec_b, Vector *vec_c)
 {
     int i = threadIdx.x;
     vec_c->values[i] = vec_a->values[i] - vec_b->values[i];
-    cuPrintf("vec_c->values[%d]: %f\n", i, vec_c->values[i]);
 }
 
 __global__ void cgVecAdd(Vector *vec_a, Vector *vec_b, Vector *vec_c)
 {
     int i = threadIdx.x;
     vec_c->values[i] = vec_a->values[i] + vec_b->values[i];
-    cuPrintf("vec_c->values[%d]: %f\n", i, vec_c->values[i]);
 }
 
 /* ---------- Device Memory Management ---------- */
-Vector **cgDeviceAllocateVectorArray(Vector **hv_array, int arr_size, Vector *hv_template)
+void cgDeepCopy(Vector *pdvec_a, Vector *pdvec_b)
 {
-    cudaError_t cudaResult;
-    Vector *dv_template, *dv_array;
-    int idx = 0;
-
-    for(idx = 0; idx < arr_size; idx++)
-    {
-        printf("-> Setting dv_template\n");
-        //cgCopyVector(hv_template, &dv_template);
-        cudaMalloc(&dv_template, sizeof(Vector));
-        cudaMemcpy(dv_template, hv_template, sizeof(Vector), cudaMemcpyHostToDevice);
-        hv_array[idx] = dv_template;
-        printf("-> Finished with dv_template\n");
-    }
-
-    /* Allocate and copy to device */
-    cudaResult = cudaMalloc(&dv_array, arr_size * sizeof(Vector *));
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error cgDeviceAllocateVectorArray-1: %s\n", cudaGetErrorString(cudaResult));
-        return NULL;
-    }
-
-    printf("dv_array: %p\n", dv_array);
-    printf("hv_array: %p\n", hv_array);
-    for(idx = 0; idx < arr_size; idx++)
-    {
-        printf("hv_array[%d]: %p\n", idx, hv_array[idx]);
-    }
-
-    cudaResult = cudaMemcpy(dv_array, hv_array, arr_size * sizeof(Vector *), cudaMemcpyHostToDevice);
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error cgDeviceAllocateVectorArray-2: %s\n", cudaGetErrorString(cudaResult));
-        return NULL;
-    }
-
-    Vector *pdv_array;
-    cudaResult = cudaMalloc(&pdv_array, sizeof(Vector *));
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error cgDeviceAllocateVectorArray-3: %s\n", cudaGetErrorString(cudaResult));
-        return NULL;
-    }
-
-    cudaResult = cudaMemcpy(pdv_array, &dv_array, sizeof(Vector *), cudaMemcpyDeviceToDevice);
-    if(cudaResult != cudaSuccess)
-    {
-        fprintf(stderr, "Error cgDeviceAllocateVectorArray-4: %s\n", cudaGetErrorString(cudaResult));
-        return NULL;
-    }
-
-    return (Vector **)pdv_array;
-}
-
-__device__ void cgDeepCopy(Vector vec_a, Vector *pvec_b)
-{
-    pvec_b->size = vec_a.size;
-    if(threadIdx.x == 0)
-        pvec_b->values[threadIdx.y] = vec_a.values[threadIdx.y];    
 }
 
 /* ---------- Copying between host and device ---------- */
@@ -318,6 +258,10 @@ int cgCopyVector(Vector *h_v, Vector **d_v)
     return 0;
 }
 
+int cgCloneVector(Vector *phvec_a, Vector **pphvec_b)
+{
+    return 1;
+}
 
 /* ---------- Helper Kernels ---------- */
 

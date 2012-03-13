@@ -24,20 +24,20 @@
 /* Controls the number of times the CG is 
  * executed (handy for collecting data) 
  */
-#define MAX_EXECUTION_COUNT 1
+#define MAX_EXECUTION_COUNT 1000
 
 /* Controls the maximum number of CUDA threads
  * used for the CG computation.
  */
-#define MAX_THREAD_COUNT_SHIFT
+#define MAX_THREAD_COUNT_SHIFT 5
 
 /* The size (height and width) of each thread
  * block.  Currently this must be a power of two.
  */
-#define BLOCK_SIZE 8
+#define BLOCK_SIZE 4
 
 /* ---------- Conjugate Gradient ---------- */
-void cgConjGrad(int, Matrix *, Vector *, Vector *);
+void cgConjGrad(int, Matrix *, Vector *, Vector *, Vector *);
 void cgTestMVOps(Matrix *, Vector *, Vector *);
 
 void cgHPrintVector(Vector *vec_a)
@@ -96,21 +96,20 @@ int main(int argc, char **argv)
   cgCopyVector(&hv_b, &dv_x);
   
   /* Test MV Ops */
-  printf("Going to cgTestMVOps\n");
-  cgTestMVOps(dm_A, dv_b, dv_x);
+  //cgTestMVOps(dm_A, dv_b, dv_x);
   
   /* Compute CG */
-  printf("\tThreads\tTime\n");
+  printf("\tThreads\tTime (ms)\n");
   for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) 
   {
       cudaEventRecord(start, 0);
-      //cgConjGrad(max_iterations, dm_A, dv_b, dv_x);
+      cgConjGrad(max_iterations, dm_A, dv_b, &hv_b, dv_x);
       cudaEventRecord(stop, 0);
       cudaEventSynchronize(stop);
       
       cudaEventElapsedTime(&time, start, stop);
 
-      printf("%04d\t%d\t%f\n", exec_count, 99999, time);
+      printf("%04d\t%d\t%f\n", exec_count, BLOCK_SIZE * BLOCK_SIZE, time);
   }
 
   cudaEventDestroy(start);
@@ -122,114 +121,97 @@ int main(int argc, char **argv)
 
 /* ---------- Conjugate Gradient ---------- */
 
-void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b, Vector *pvec_x)
+void cgConjGrad(int max_iterations, Matrix *pdmat_A, Vector *pdvec_b, Vector *phvec_b, Vector *pdvec_x)
 {
-    /*
-    __shared__ double dp_shared[BLOCK_SIZE];
-    double dp_res_1, dp_res_2, sca_alpha, sca_beta;
-    __shared__ int k;
+    Vector *pdvec_r, *pdvec_s, *pdvec_p, *phvec_tmp;
+    Vector *pdsv_res, *pdvx_old, *pdvx_new, *pdvec_pr;
+    dim3 threadsPerBlock;
 
-    Matrix mat_A;
-    Vector vec_b;
+    double *pd_alpha, h_alpha;
+    double *pd_beta, h_beta;
+    double *pd_dp_1, h_dp_1;
+    double *pd_dp_2, h_dp_2;
+    int k, numBlocks;
 
-    Vector *pvec_r, *pvec_s, *pvec_p;
-    Vector *psv_res, *pvx_old, *pvx_new, *pvec_pr;
-    
-    mat_A = *pmat_A;
-    vec_b = *pvec_b;
-
+    numBlocks = 1;
+    threadsPerBlock = dim3(BLOCK_SIZE, 1, 1);
     k = 0;
 
-    pvec_r = pvec_array[0];
-    pvec_s = pvec_array[1];
-    pvec_p = pvec_array[2];
-    
-    psv_res = pvec_array[3];
-    pvx_old = pvec_array[4];
-    pvx_new = pvec_array[5];
-    pvec_pr = pvec_array[6];
+    phvec_tmp = NULL;
 
-    cuPrintf("1 pvec_r: %p\n", pvec_r);
-    cuPrintf("1 pvec_r->size: %d\n", pvec_r->size);
-    
-    cgDeepCopy(vec_b, pvec_r);
-    cgDeepCopy(*pvec_r, pvec_p);
+    /* Required by the algorithm */
+    cgCopyVector(phvec_b, &pdvec_r);
+    cgCopyVector(phvec_b, &pdvec_p);
 
-    cgDeepCopy(vec_b, &vec_s);
-    cgDeepCopy(vec_b, &sv_res);
-    cgDeepCopy(vec_b, &vx_old);
-    cgDeepCopy(vec_b, &vx_new);
-    cgDeepCopy(vec_b, &vec_prev_r);
-    
-    cuPrintf("2 pvec_r->size: %d\n", pvec_r->size);
-    cuPrintf("2 pvec_r->values: %p\n", pvec_r->values);
-    cuPrintf("2 pvec_r->values[%d]: %f\n", threadIdx.y, pvec_r->values[threadIdx.y]);
+    /* Hackish-way of initializing the device Vectors */
+    cgCopyVector(phvec_b, &pdvec_s);
+    cgCopyVector(phvec_b, &pdsv_res);
+    cgCopyVector(phvec_b, &pdvx_old);
+    cgCopyVector(phvec_b, &pdvx_new);
+    cgCopyVector(phvec_b, &pdvec_pr);
+    cgCloneVector(phvec_b, &phvec_tmp);
+
+    cudaMalloc(&pd_dp_1, sizeof(double));
+    cudaMalloc(&pd_dp_2, sizeof(double));
+    cudaMalloc(&pd_alpha, sizeof(double));
+    cudaMalloc(&pd_beta, sizeof(double));
     
     while(TRUE)
     {
-        cgMVMult(mat_A, *pvec_p, pvec_s);
-        __syncthreads();
+        threadsPerBlock = dim3(BLOCK_SIZE, BLOCK_SIZE, 1);
+        cgMVMult<<<numBlocks, threadsPerBlock>>>(pdmat_A, pdvec_p, pdvec_s);
 
-        cgDotProduct(*pvec_r, *pvec_r, dp_shared);
-        cgReduce(dp_shared, blockDim.x, &dp_res_1);
-        __syncthreads();
+        threadsPerBlock = dim3(BLOCK_SIZE, 1, 1);
+        cgDotProduct<<<numBlocks, threadsPerBlock>>>(pdvec_r, pdvec_r, pd_dp_1);
+        cgDotProduct<<<numBlocks, threadsPerBlock>>>(pdvec_p, pdvec_s, pd_dp_2);
 
-        cgDotProduct(*pvec_p, *pvec_s, dp_shared);
-        cgReduce(dp_shared, blockDim.x, &dp_res_2);
-        __syncthreads();
+        cudaMemcpy(&h_dp_1, pd_dp_1, sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&h_dp_2, pd_dp_2, sizeof(double), cudaMemcpyDeviceToHost);
+        h_alpha = h_dp_1 / h_dp_2;
+        cudaMemcpy(pd_alpha, &h_alpha, sizeof(double), cudaMemcpyHostToDevice);
 
-        sca_alpha = dp_res_1 / dp_res_2;
+        cgSVMult<<<numBlocks, threadsPerBlock>>>(pd_alpha, pdvec_p, pdsv_res);
 
-        cgSVMult(sca_alpha, *pvec_p, psv_res);
-        __syncthreads();
+        cgCopyVectorToHost(pdvx_new, &phvec_tmp);
+        cgCopyVector(phvec_tmp, &pdvx_old);
+        cgVecAdd<<<numBlocks, threadsPerBlock>>>(pdvx_old, pdsv_res, pdvx_new);
 
-        cgDeepCopy(*pvx_new, pvx_old);
-        cgVecAdd(*pvx_old, *psv_res, pvx_new);
-        __syncthreads();
+        cgCopyVectorToHost(pdvec_r, &phvec_tmp);
+        cgCopyVector(phvec_tmp, &pdvec_pr);
+        cgSVMult<<<numBlocks, threadsPerBlock>>>(pd_alpha, pdvec_s, pdsv_res);
 
-        cgDeepCopy(*pvec_r, pvec_pr);
-        cgSVMult(sca_alpha, *pvec_s, psv_res);
-        __syncthreads();
-
-        cgVecSub(*pvec_r, *psv_res, pvec_r);
-        __syncthreads();
+        cgVecSub<<<numBlocks, threadsPerBlock>>>(pdvec_r, pdsv_res, pdvec_r);
 
         if(k == max_iterations)
         {
             break;
         }
 
-        cgDotProduct(*pvec_r, *pvec_r, dp_shared);
-        cgReduce(dp_shared, blockDim.x, &dp_res_1);
-        __syncthreads();
+        cgDotProduct<<<numBlocks, threadsPerBlock>>>(pdvec_r, pdvec_r, pd_dp_1);
+        cgDotProduct<<<numBlocks, threadsPerBlock>>>(pdvec_pr, pdvec_pr, pd_dp_2);
 
-        cgDotProduct(*pvec_pr, *pvec_pr, dp_shared);
-        cgReduce(dp_shared, blockDim.x, &dp_res_2);
-        __syncthreads();
+        cudaMemcpy(&h_dp_1, pd_dp_1, sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&h_dp_2, pd_dp_2, sizeof(double), cudaMemcpyDeviceToHost);
+        h_beta = h_dp_1 / h_dp_2;
+        cudaMemcpy(pd_beta, &h_beta, sizeof(double), cudaMemcpyHostToDevice);
 
-        sca_beta = dp_res_1 / dp_res_2;
+        cgSVMult<<<numBlocks, threadsPerBlock>>>(pd_beta, pdvec_p, pdsv_res);
 
-        cgSVMult(sca_beta, *pvec_p, psv_res);
-        __syncthreads();
-
-        cgVecAdd(*pvec_r, *psv_res, pvec_p);
-        __syncthreads();
+        cgVecAdd<<<numBlocks, threadsPerBlock>>>(pdvec_r, pdsv_res, pdvec_p);
         
         k++;
     }
 
-    pvec_x->size = pvx_new->size;
-    pvec_x->values = pvx_new->values;
-    //cuPrintf("pvec_x->size: %d\n", pvec_x->size);
-    //cuPrintf("pvec_x->values: %p\n", pvec_x->values);
-*/
+    /* get vx_new, print it */
+    cgCopyVectorToHost(pdvx_new, &phvec_tmp);
+    //cgHPrintVector(phvec_tmp);
 }
 
 /* ---------- Testing Matrix and Vector operations ---------- */
 
 void cgTestMVOps(Matrix *pdmat_A, Vector *pdvec_b, Vector *pdvec_c)
 {
-    dim3 threadsPerBlock = dim3(8, 1, 1);
+    dim3 threadsPerBlock = dim3(BLOCK_SIZE, 1, 1);
     int numBlocks = 1;
 
     Vector *pvec_c = NULL;
@@ -248,9 +230,11 @@ void cgTestMVOps(Matrix *pdmat_A, Vector *pdvec_b, Vector *pdvec_c)
     cgCopyVectorToHost(pdvec_c, &pvec_c);
     cgHPrintVector(pvec_c);
 
-    cgSVMult<<<numBlocks, threadsPerBlock>>>(4, pdvec_b, pdvec_c);
+    /* "4.0" should be double *
+    cgSVMult<<<numBlocks, threadsPerBlock>>>(4.0, pdvec_b, pdvec_c);
     cudaThreadSynchronize();
     cudaPrintfDisplay(stdout, false);
+    */
 
     cgCopyVectorToHost(pdvec_c, &pvec_c);
     cgHPrintVector(pvec_c);
@@ -265,7 +249,7 @@ void cgTestMVOps(Matrix *pdmat_A, Vector *pdvec_b, Vector *pdvec_c)
     printf("Dot product: %f\n", h_dp_res);
 
     
-    threadsPerBlock = dim3(8, 8, 1);
+    threadsPerBlock = dim3(BLOCK_SIZE, BLOCK_SIZE, 1);
     cgMVMult<<<numBlocks, threadsPerBlock>>>(pdmat_A, pdvec_b, pdvec_c);
     cudaThreadSynchronize();
     cudaPrintfDisplay();
