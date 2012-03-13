@@ -12,7 +12,7 @@
 
 /* ---------- Matrix-Vector Operations ---------- */
 
-__device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
+__global__ void cgMVMult(Matrix *mat_A, Vector *vec_b, Vector *vec_c)
 {
     int mx_idx = threadIdx.x + (blockDim.x * threadIdx.y);
     int ve_idx = threadIdx.x;
@@ -20,7 +20,7 @@ __device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
     double temp_res, row_res;
     __shared__ double temp_mat[8][8];
 
-    temp_res = mat_A.values[mx_idx] * vec_b.values[ve_idx];
+    temp_res = mat_A->values[mx_idx] * vec_b->values[ve_idx];
     temp_mat[threadIdx.y][threadIdx.x] = temp_res;
     __syncthreads();
 
@@ -37,7 +37,7 @@ __device__ void cgMVMult(Matrix mat_A, Vector vec_b, Vector *vec_c)
         vec_c->values[threadIdx.y] = row_res;
 }
 
-__device__ void cgReduce(double *dp, int dp_size, double *dp_final)
+__global__ void cgReduce(double *dp, int dp_size, double *dp_final)
 {
     unsigned int s;
     int tid = threadIdx.x;
@@ -55,28 +55,47 @@ __device__ void cgReduce(double *dp, int dp_size, double *dp_final)
     *dp_final = dp[0];
 }
 
-__device__ void cgDotProduct(Vector vec_a, Vector vec_b, double *dp)
+__global__ void cgDotProduct(Vector *vec_a, Vector *vec_b, double *dp_final)
 {
+    unsigned int s;
     int i = threadIdx.x;
-    dp[i] = vec_a.values[i] * vec_b.values[i];
+    __shared__ double dp[8];
+
+    dp[i] = vec_a->values[i] * vec_b->values[i];
+    __syncthreads();
+
+    for(s = 1; s < blockDim.x; s *= 2)
+    {
+        if(i % (2*s) == 0)
+        {
+            dp[i] += dp[i + s];
+        }
+
+        __syncthreads();
+    }
+
+    *dp_final = dp[0];
 }
 
-__device__ void cgSVMult(int sca, Vector vec_a, Vector *vec_b)
+__global__ void cgSVMult(int sca, Vector *vec_a, Vector *vec_b)
 {
     int i = threadIdx.x;
-    vec_b->values[i] = sca * vec_a.values[i];
+    vec_b->values[i] = sca * vec_a->values[i];
+    cuPrintf("vec_b->values[%d]: %f\n", i, vec_b->values[i]);
 }
 
-__device__ void cgVecSub(Vector vec_a, Vector vec_b, Vector *vec_c)
+__global__ void cgVecSub(Vector *vec_a, Vector *vec_b, Vector *vec_c)
 {
     int i = threadIdx.x;
-    vec_c->values[i] = vec_a.values[i] - vec_b.values[i];
+    vec_c->values[i] = vec_a->values[i] - vec_b->values[i];
+    cuPrintf("vec_c->values[%d]: %f\n", i, vec_c->values[i]);
 }
 
-__device__ void cgVecAdd(Vector vec_a, Vector vec_b, Vector *vec_c)
+__global__ void cgVecAdd(Vector *vec_a, Vector *vec_b, Vector *vec_c)
 {
     int i = threadIdx.x;
-    vec_c->values[i] = vec_a.values[i] + vec_b.values[i];
+    vec_c->values[i] = vec_a->values[i] + vec_b->values[i];
+    cuPrintf("vec_c->values[%d]: %f\n", i, vec_c->values[i]);
 }
 
 /* ---------- Device Memory Management ---------- */
@@ -221,38 +240,38 @@ int cgCopyMatrix(Matrix *h_m, Matrix **d_m)
     return 0;
 }
 
-int cgCopyVectorToHost(Vector *d_v, Vector *h_v)
+int cgCopyVectorToHost(Vector *d_v, Vector **pph_v)
 {
     cudaError_t cudaResult;
     double *h_values;
-    
-    printf("cgCopyVectorToHost: h_v -> %p\n", h_v);
-    printf("cgCopyVectorToHost: d_v -> %p\n", d_v);
 
-    cudaResult = cudaMemcpy(h_v, d_v, sizeof(Vector), cudaMemcpyDeviceToHost);
+    if(*pph_v == NULL)
+    {
+        *pph_v = (Vector *)calloc(1, sizeof(Vector));
+    }
+
+    cudaResult = cudaMemcpy(*pph_v, d_v, sizeof(Vector), cudaMemcpyDeviceToHost);
     if(cudaResult != cudaSuccess)
     {
         fprintf(stderr, "Error cgCopyVectorToHost-1: %s\n", cudaGetErrorString(cudaResult));
         return -1;
     }
 
-    h_values = (double *)calloc(h_v->size, sizeof(double));
+    h_values = (double *)calloc((*pph_v)->size, sizeof(double));
     if(!h_values)
     {
         fprintf(stderr, "Error: failed to allocate spcae for host values\n");
         return -1;
     }
 
-    printf("h_v->values: %p\n", h_v->values);
-
-    cudaResult = cudaMemcpy(h_values, h_v->values, h_v->size * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaResult = cudaMemcpy(h_values, (*pph_v)->values, (*pph_v)->size * sizeof(double), cudaMemcpyDeviceToHost);
     if(cudaResult != cudaSuccess)
     {
         fprintf(stderr, "Error cgCopyVectorToHost-2: %s\n", cudaGetErrorString(cudaResult));
         return -1;
     }
 
-    h_v->values = h_values;
+    (*pph_v)->values = h_values;
 
     return 0;
 }
@@ -281,7 +300,6 @@ int cgCopyVector(Vector *h_v, Vector **d_v)
     /* Allocate space on the device for the vector structure */
     h_temp.values = d_values;
     h_temp.size = h_v->size;
-    printf("h_v->size: %d\n", h_v->size);
 
     cudaResult = cudaMalloc(d_v, sizeof(Vector));
     if(cudaResult != cudaSuccess)
@@ -297,7 +315,6 @@ int cgCopyVector(Vector *h_v, Vector **d_v)
         return -1;
     }
 
-    printf("cgCopyVector: %p\n", *d_v);
     return 0;
 }
 

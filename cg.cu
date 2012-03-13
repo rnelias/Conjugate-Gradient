@@ -37,8 +37,25 @@
 #define BLOCK_SIZE 8
 
 /* ---------- Conjugate Gradient ---------- */
-__global__ void cgConjGrad(int, Matrix *, Vector *, Vector *, Vector **);
-__global__ void cgTestMVOps(Matrix *, Vector *);
+void cgConjGrad(int, Matrix *, Vector *, Vector *);
+void cgTestMVOps(Matrix *, Vector *, Vector *);
+
+void cgHPrintVector(Vector *vec_a)
+{
+    int i = 0;
+
+    if(vec_a == NULL)
+    {
+        printf("Vector is NULL\n");
+        return;
+    }
+
+    printf("Vector (%p):\n", vec_a);
+    printf("\tSize: %d\n", vec_a->size);
+    printf("\tValues (%p):\n", vec_a->values);
+    for(; i < vec_a->size; i++)
+        printf("\t\tvec[%d]: %f\n", i, vec_a->values[i]);
+}
 
 int main(int argc, char **argv)
 {
@@ -54,10 +71,6 @@ int main(int argc, char **argv)
 
   input_file = argv[1];
   max_iterations = (int)strtol(argv[2], NULL, 10);
-
-  /* Figure out the number of blocks and threads per block */
-  int numBlocks = 1;
-  dim3 threadsPerBlock = dim3(BLOCK_SIZE, BLOCK_SIZE, 1);
 
   cudaEvent_t start, stop;
   float time;
@@ -80,48 +93,24 @@ int main(int argc, char **argv)
   /* Send data to GPU */
   cgCopyMatrix(&hm_A, &dm_A);
   cgCopyVector(&hv_b, &dv_b);
-
-  if(cudaMalloc(&dv_x, sizeof(Vector)) != cudaSuccess)
-  {
-      fprintf(stderr, "Failed to allocate space for dv_x\n");
-  }
+  cgCopyVector(&hv_b, &dv_x);
   
   /* Test MV Ops */
-  //cgTestMVOps<<<numBlocks, threadsPerBlock>>>(dm_A, dv_b);
-  //cudaThreadSynchronize();
-  //cudaPrintfDisplay(stdout, true);
-
-  /* Allocate the various vectors needed for the CG method */
-  Vector *hv_array[7];
-  Vector **dv_array = cgDeviceAllocateVectorArray(hv_array, 7, &hv_b);
+  printf("Going to cgTestMVOps\n");
+  cgTestMVOps(dm_A, dv_b, dv_x);
   
   /* Compute CG */
   printf("\tThreads\tTime\n");
   for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) 
   {
       cudaEventRecord(start, 0);
-      cgConjGrad<<<numBlocks, threadsPerBlock>>>(max_iterations, dm_A, dv_b, dv_x, dv_array);
-      cudaPrintfDisplay(stdout, false);
+      //cgConjGrad(max_iterations, dm_A, dv_b, dv_x);
       cudaEventRecord(stop, 0);
       cudaEventSynchronize(stop);
       
       cudaEventElapsedTime(&time, start, stop);
 
-      cgCopyVectorToHost(dv_x, &hv_x);
-      printf("hv_x:\n");
-      printf("\tsize: %d\n", hv_x.size);
-      printf("\tvalues: %p\n", hv_x.values);
-      if(hv_x.values == NULL)
-      {
-          printf("\thv_x.values: NULL\n");
-      }
-      else
-      {
-          for(i = 0; i < hv_x.size; i++)
-              printf("\thv_x.values[%d]: %f\n", i, hv_x.values[i]);
-      }
-      
-      printf("%04d\t%d\t%f\n", exec_count, threadsPerBlock.x * threadsPerBlock.y, time);
+      printf("%04d\t%d\t%f\n", exec_count, 99999, time);
   }
 
   cudaEventDestroy(start);
@@ -133,8 +122,9 @@ int main(int argc, char **argv)
 
 /* ---------- Conjugate Gradient ---------- */
 
-__global__ void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b, Vector *pvec_x, Vector **pvec_array)
+void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b, Vector *pvec_x)
 {
+    /*
     __shared__ double dp_shared[BLOCK_SIZE];
     double dp_res_1, dp_res_2, sca_alpha, sca_beta;
     __shared__ int k;
@@ -165,13 +155,11 @@ __global__ void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b, V
     cgDeepCopy(vec_b, pvec_r);
     cgDeepCopy(*pvec_r, pvec_p);
 
-    /*
     cgDeepCopy(vec_b, &vec_s);
     cgDeepCopy(vec_b, &sv_res);
     cgDeepCopy(vec_b, &vx_old);
     cgDeepCopy(vec_b, &vx_new);
     cgDeepCopy(vec_b, &vec_prev_r);
-    */
     
     cuPrintf("2 pvec_r->size: %d\n", pvec_r->size);
     cuPrintf("2 pvec_r->values: %p\n", pvec_r->values);
@@ -234,35 +222,54 @@ __global__ void cgConjGrad(int max_iterations, Matrix *pmat_A, Vector *pvec_b, V
     pvec_x->values = pvx_new->values;
     //cuPrintf("pvec_x->size: %d\n", pvec_x->size);
     //cuPrintf("pvec_x->values: %p\n", pvec_x->values);
+*/
 }
 
 /* ---------- Testing Matrix and Vector operations ---------- */
 
-__global__ void cgTestMVOps(Matrix *pmat_A, Vector *pvec_b)
+void cgTestMVOps(Matrix *pdmat_A, Vector *pdvec_b, Vector *pdvec_c)
 {
-    //int i = threadIdx.x;
-    Vector vec_b, vec_c;
-    __shared__ double dp[5];
-    double dp_res;
-    Matrix mat_A;
+    dim3 threadsPerBlock = dim3(8, 1, 1);
+    int numBlocks = 1;
 
-    mat_A = *pmat_A;
-    vec_b = *pvec_b;
+    Vector *pvec_c = NULL;
 
-    cgVecAdd(vec_b, vec_b, &vec_c);
-    //cuPrintf("cgVecAdd: vec_c[%d] = %f\n", i, vec_c.values[i]);
+    cgVecAdd<<<numBlocks, threadsPerBlock>>>(pdvec_b, pdvec_b, pdvec_c);
+    cudaThreadSynchronize();
+    cudaPrintfDisplay(stdout, false);
 
-    cgVecSub(vec_b, vec_b, &vec_c);
-    //cuPrintf("cgVecSub: vec_c[%d] = %f\n", i, vec_c.values[i]);
+    cgCopyVectorToHost(pdvec_c, &pvec_c);
+    cgHPrintVector(pvec_c);
 
-    cgSVMult(4, vec_b, &vec_c);
-    //cuPrintf("cgSVMult: vec_c[%d] = %f\n", i, vec_c.values[i]);
+    cgVecSub<<<numBlocks, threadsPerBlock>>>(pdvec_b, pdvec_b, pdvec_c);
+    cudaThreadSynchronize();
+    cudaPrintfDisplay(stdout, false);
 
-    cgDotProduct(vec_b, vec_b, dp);
-    cgReduce(dp, 5, &dp_res);
-    //cuPrintf("cgDotProduct+cgReduce: %f\n", dp_res);
+    cgCopyVectorToHost(pdvec_c, &pvec_c);
+    cgHPrintVector(pvec_c);
 
-    cgMVMult(mat_A, vec_b, &vec_c);
-    //if(threadIdx.x == 0)
-    //    cuPrintf("cgMVMult: vec_c[%d] = %f\n", threadIdx.y, vec_c.values[threadIdx.y]);
+    cgSVMult<<<numBlocks, threadsPerBlock>>>(4, pdvec_b, pdvec_c);
+    cudaThreadSynchronize();
+    cudaPrintfDisplay(stdout, false);
+
+    cgCopyVectorToHost(pdvec_c, &pvec_c);
+    cgHPrintVector(pvec_c);
+
+    double h_dp_res, *pd_dp_res;
+    cudaMalloc(&pd_dp_res, sizeof(double));
+    cgDotProduct<<<numBlocks, threadsPerBlock>>>(pdvec_b, pdvec_b, pd_dp_res);
+    cudaThreadSynchronize();
+    cudaPrintfDisplay(stdout, false);
+
+    cudaMemcpy(&h_dp_res, pd_dp_res, sizeof(double), cudaMemcpyDeviceToHost);
+    printf("Dot product: %f\n", h_dp_res);
+
+    
+    threadsPerBlock = dim3(8, 8, 1);
+    cgMVMult<<<numBlocks, threadsPerBlock>>>(pdmat_A, pdvec_b, pdvec_c);
+    cudaThreadSynchronize();
+    cudaPrintfDisplay();
+
+    cgCopyVectorToHost(pdvec_c, &pvec_c);
+    cgHPrintVector(pvec_c);
 }
