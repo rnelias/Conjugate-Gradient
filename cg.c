@@ -61,7 +61,10 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
+  int max_executions = -1;
   int d_max_iter = -1;
+  int d_max_exec = -1;
+  int execs = 0;
 
   double start_time = 0.0;
   double end_time = 0.0;
@@ -82,13 +85,14 @@ int main(int argc, char **argv)
   BEGIN_ROOT_SECTION
 
   /* Process command arguments */
-  if(argc < 3) {
-    fprintf(stderr, "Usage: %s <input-data> <max-iterations> [suppress-output]\n", argv[0]);
+  if(argc < 4) {
+    fprintf(stderr, "Usage: %s <input-data> <max-iterations> <max-executions> [suppress-output]\n", argv[0]);
     return -1;
   }
 
   input_file = argv[1];
   max_iterations = (int)strtol(argv[2], NULL, 10);
+  max_executions = (int)strtol(argv[3], NULL, 10);
   
   if(argc == 4)
     no_output = argv[3][0] == 'y' ? TRUE : FALSE;
@@ -98,16 +102,18 @@ int main(int argc, char **argv)
   vec_b = new_mv_struct();
 
   d_max_iter = max_iterations;
+  d_max_exec = max_executions;
 
   /* Read input */
-  CG_PRINT("reading input... ");
   read_input_file(input_file, mat_A, vec_b);
-  CG_PRINT("done\n");
+
+  printf("\tNodes\tTime\n");
 
   END_ROOT_SECTION
 
 
   MPI_Bcast(&d_max_iter, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&d_max_exec, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
 
   d_mat_A = distribute_matrix(mat_A);
   d_vec_b = distribute_vector(vec_b);
@@ -115,24 +121,32 @@ int main(int argc, char **argv)
   /* Test MV Ops */
   //test_mv_ops(d_mat_A, d_vec_b);
 
-  /* Compute CG */
-  if(g_mpi_rank == ROOT_RANK)
-    start_time = MPI_Wtime();
+  for(execs = 0; execs < d_max_exec; execs++)
+  {
 
-  CG_PRINT("going to CG\n");
-  d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
+      /* Compute CG */
+      if(g_mpi_rank == ROOT_RANK)
+          start_time = MPI_Wtime();
 
-  if(g_mpi_rank == ROOT_RANK)
-    end_time = MPI_Wtime();  
+      d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
 
-  vec_x = gather_vector(d_vec_x);
+      if(g_mpi_rank == ROOT_RANK)
+          end_time = MPI_Wtime();  
+
+      vec_x = gather_vector(d_vec_x);
+
+      BEGIN_ROOT_SECTION
+
+      printf("%d\t%d\t%f\n", execs, g_mpi_group_size, end_time - start_time);
+
+      /* Print result */
+      //print_sparse(vec_x, "vec_x (result)");
+
+      END_ROOT_SECTION
+
+  }
 
   BEGIN_ROOT_SECTION
-
-  printf("CG took approx %f seconds on %d nodes\n", end_time - start_time, g_mpi_group_size);
-
-  /* Print result */
-  //print_sparse(vec_x, "vec_x (result)");
 
   /* Clean Up */
   free_mv_struct(mat_A);

@@ -19,19 +19,19 @@ clean:
 	rm -rf *~
 
 sync:
-	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:cg
+	rsync -Ccvzr -rsh=ssh . dpucsek@nestor.westgrid.ca:cg
 
 run-test_mv_ops:
-	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30
+	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30 ${EXECS}
 
 run-test:
-	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30
+	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS}
 
 run-test-suppressed:
-	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 n
+	mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS} n
 
 run-full:
-	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30
+	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS}
 
 run-full-suppressed:
-	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 n
+	mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS} n
