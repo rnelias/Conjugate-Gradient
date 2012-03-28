@@ -3,9 +3,15 @@ CFLAGS=-Wall -g -fopenmp
 LIBS=
 OBJS=mv_ops.c cg.c
 PROG_NAME=cg
+UNAME=$(shell uname)
 
 all:
+ifeq ($(UNAME),Linux)
+	${CC} ${CFLAGS} ${LIBS} -lrt -o ${PROG_NAME} ${OBJS}
+endif
+ifeq ($(UNAME),Darwin)
 	${CC} ${CFLAGS} ${LIBS} -o ${PROG_NAME} ${OBJS}
+endif
 
 clean:
 	rm -rf ${PROG_NAME}
@@ -15,7 +21,7 @@ clean:
 	rm -rf *~
 
 sync:
-	rsync -Ccvzr -rsh=ssh . dpucsek@checkers.westgrid.ca:cg
+	rsync -Ccvzr -rsh=ssh . dpucsek@nestor.westgrid.ca:cg
 
 run-test:
 	@./cg input/test.txt 30

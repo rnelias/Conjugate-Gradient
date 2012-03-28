@@ -25,8 +25,6 @@
 #define FALSE 0
 #endif
 
-#define MAX_EXECUTION_COUNT 5
-
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
 int conj_grad(int, struct __mv_sparse *, struct __mv_sparse *, struct __mv_sparse **);
@@ -51,7 +49,8 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
-  int exec_count = 0;
+  int exec_count = 0, max_thread_shift = 0;
+  int max_exec_count = 0;
 
   /* For timing */
   double elapsedSec;
@@ -65,13 +64,15 @@ int main(int argc, char **argv)
 #endif
 
   /* Process command arguments */
-  if(argc < 3) {
-    fprintf(stderr, "Usage: %s <input-data> <max-iterations> [suppress-output]\n", argv[0]);
+  if(argc < 5) {
+    fprintf(stderr, "Usage: %s <input-data> <max-cg-iterations> <max-runs> <max-iterations-per-config> [suppress-output]\n", argv[0]);
     return -1;
   }
 
   input_file = argv[1];
   max_iterations = (int)strtol(argv[2], NULL, 10);
+  max_thread_shift = (int)strtol(argv[3], NULL, 10);
+  max_exec_count = (int)strtol(argv[4], NULL, 10);
   
   if(argc == 4)
     no_output = argv[3][0] == 'y' ? TRUE : FALSE;
@@ -82,55 +83,58 @@ int main(int argc, char **argv)
   struct __mv_sparse *vec_x = NULL;
 
   /* Read input */
-  printf("Reading in data... ");
-  fflush(stdout);
   read_input_file(input_file, mat_A, vec_b);
-  printf("Done\n");
-  fflush(stdout);
 
   /* Test MV Ops */
   //test_mv_ops(mat_A, vec_b);
 
   /* Compute CG */
-  for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+  int thread_shift = 0;
+  printf("\tThreads\tTime\n");
+//  for(; thread_shift <= max_thread_shift; thread_shift++)
+//  {
+      omp_set_num_threads(1 << max_thread_shift);
+
+      for(exec_count = 0; exec_count < max_exec_count; exec_count++) 
+      {
 #ifdef __APPLE__
-    start = mach_absolute_time();
-    conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-    end = mach_absolute_time();
+          start = mach_absolute_time();
+          conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+          end = mach_absolute_time();
 #else
-    clock_gettime(CLOCK_REALTIME, &start_tp);
-    conj_grad(max_iterations, mat_A, vec_b, &vec_x);
-    clock_gettime(CLOCK_REALTIME, &end_tp);
+          clock_gettime(CLOCK_REALTIME, &start_tp);
+          conj_grad(max_iterations, mat_A, vec_b, &vec_x);
+          clock_gettime(CLOCK_REALTIME, &end_tp);
 #endif
-
+          
 #ifdef __APPLE__    
-    if ( sTimebaseInfo.denom == 0 ) {
-      (void) mach_timebase_info(&sTimebaseInfo);
-    }
-
-    elapsed = end - start;
-    elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
+          if ( sTimebaseInfo.denom == 0 ) {
+              (void) mach_timebase_info(&sTimebaseInfo);
+          }
+          
+          elapsed = end - start;
+          elapsedSec = (elapsed * sTimebaseInfo.numer / sTimebaseInfo.denom) / 1000000000.0;
 #else
-    diffSec = (int)(end_tp.tv_sec - start_tp.tv_sec);
-    if(end_tp.tv_nsec >= start_tp.tv_nsec) {
-      diffNano = end_tp.tv_nsec - start_tp.tv_nsec;
-    } else {
-      diffNano = start_tp.tv_nsec - end_tp.tv_nsec;
-    }
-
-    elapsedSec = diffNano / 1000000000.0;
-    elapsedSec += diffSec;
+          diffSec = (int)(end_tp.tv_sec - start_tp.tv_sec);
+          if(end_tp.tv_nsec >= start_tp.tv_nsec) {
+              diffNano = end_tp.tv_nsec - start_tp.tv_nsec;
+          } else {
+              diffNano = start_tp.tv_nsec - end_tp.tv_nsec;
+          }
+          
+          elapsedSec = diffNano / 1000000000.0;
+          elapsedSec += diffSec;
 #endif
 
-    printf("Execution %d -> Configuration: OMP | Time: %f sec | %d threads available\n", exec_count+1, elapsedSec, omp_get_max_threads());   
+          printf("%d\t%d\t%f\n", exec_count, omp_get_max_threads(), elapsedSec);
 
-    /* Print result */
-    //print_sparse(vec_x);
+          /* Print result */
+          //print_sparse(vec_x);
 
-    free_mv_struct(vec_x);
-    vec_x = NULL;
-  }
-
+          free_mv_struct(vec_x);
+          vec_x = NULL;
+      }
+//  }
 
   /* Clean Up */
   free_mv_struct(mat_A);
