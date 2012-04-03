@@ -1,10 +1,11 @@
 CC=mpicc
-CFLAGS=-cc=gcc -Wall -g -fopenmp
+CFLAGS=-openmp
 LIBS=
 OBJS=mv_ops.c cg.c
 PROG_NAME=cg
 NUM_PROCS=5
 EXECS=1
+THREADS=1
 
 all:
 	${CC} ${CFLAGS} ${LIBS} -o ${PROG_NAME} ${OBJS}
@@ -23,16 +24,16 @@ sync:
 	rsync -Ccvzr -rsh=ssh . dpucsek@nestor.westgrid.ca:cg
 
 run-test_mv_ops:
-	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30 ${EXECS}
+	mpiexec -n ${NUM_PROCS} ./cg input/mv_ops.txt 30 ${EXECS} ${THREADS}
 
 run-test:
-	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS}
+	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS} ${THREADS}
 
 run-test-suppressed:
-	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS} n
+	@mpiexec -n ${NUM_PROCS} ./cg input/test.txt 30 ${EXECS} ${THREADS} n
 
 run-full:
-	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS}
+	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS} ${THREADS}
 
 run-full-suppressed:
-	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS} n
+	@mpiexec -n ${NUM_PROCS} ./cg input/Ab.txt 30 ${EXECS} ${THREADS} n

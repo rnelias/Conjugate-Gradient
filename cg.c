@@ -63,6 +63,7 @@ int main(int argc, char **argv)
   int max_iterations = -1, no_output = FALSE;
   int d_max_iter = -1, d_max_exec = -1;
   int exec_count = 0, max_exec_count = 1;
+  int max_threads = 1;
 
   double start_time = 0.0;
   double end_time = 0.0;
@@ -83,17 +84,18 @@ int main(int argc, char **argv)
   BEGIN_ROOT_SECTION
 
   /* Process command arguments */
-  if(argc < 4) {
-    fprintf(stderr, "Usage: %s <input-data> <max-iterations> <max-executions> [suppress-output]\n", argv[0]);
+  if(argc < 5) {
+    fprintf(stderr, "Usage: %s <input-data> <max-iterations> <max-executions> <max-threads> [suppress-output]\n", argv[0]);
     return -1;
   }
 
   input_file = argv[1];
   max_iterations = (int)strtol(argv[2], NULL, 10);
   max_exec_count = (int)strtol(argv[3], NULL, 10);
+  max_threads = (int)strtol(argv[4], NULL, 10);
   
-  if(argc == 4)
-    no_output = argv[3][0] == 'y' ? TRUE : FALSE;
+  if(argc == 6)
+    no_output = argv[5][0] == 'y' ? TRUE : FALSE;
 
   /* Initialize matrix A and vector b */
   mat_A = new_mv_struct();
@@ -104,6 +106,8 @@ int main(int argc, char **argv)
 
   /* Read input */
   read_input_file(input_file, mat_A, vec_b);
+
+  omp_set_num_threads(max_threads);
 
   printf("MPI Nodes: %d\n", g_mpi_group_size);
   printf("\tThreads\tTime\n");
