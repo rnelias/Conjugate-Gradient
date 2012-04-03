@@ -282,6 +282,8 @@ int read_input_file(const char *input_file, struct __mv_sparse *mat_A, struct __
     }
   }
 
+  printf("matrix size: %d nnz: %d\n", A_size, A_nnz);
+
   /* Now set the various fields of the output matrix */
   mat_A->size = A_size-1;
   mat_A->nnz = A_nnz;
