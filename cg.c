@@ -28,8 +28,6 @@
 #define CG_PRINTF(fmt,...)
 #endif
 
-#define MAX_EXECUTION_COUNT 5
-
 /* ---------- Function Declarations ---------- */
 int read_input_file(const char *, struct __mv_sparse *, struct __mv_sparse *);
 struct __mv_sparse *conj_grad(int, struct __mv_sparse *, struct __mv_sparse *);
@@ -63,8 +61,8 @@ int main(int argc, char **argv)
 {
   const char *input_file = NULL;
   int max_iterations = -1, no_output = FALSE;
-  int d_max_iter = -1;
-  int exec_count = 0;
+  int d_max_iter = -1, d_max_exec = -1;
+  int exec_count = 0, max_exec_count = 1;
 
   double start_time = 0.0;
   double end_time = 0.0;
@@ -85,13 +83,14 @@ int main(int argc, char **argv)
   BEGIN_ROOT_SECTION
 
   /* Process command arguments */
-  if(argc < 3) {
-    fprintf(stderr, "Usage: %s <input-data> <max-iterations> [suppress-output]\n", argv[0]);
+  if(argc < 4) {
+    fprintf(stderr, "Usage: %s <input-data> <max-iterations> <max-executions> [suppress-output]\n", argv[0]);
     return -1;
   }
 
   input_file = argv[1];
   max_iterations = (int)strtol(argv[2], NULL, 10);
+  max_exec_count = (int)strtol(argv[3], NULL, 10);
   
   if(argc == 4)
     no_output = argv[3][0] == 'y' ? TRUE : FALSE;
@@ -101,12 +100,13 @@ int main(int argc, char **argv)
   vec_b = new_mv_struct();
 
   d_max_iter = max_iterations;
-
+  d_max_exec = max_exec_count;
 
   /* Read input */
-  CG_PRINT("reading input... ");
   read_input_file(input_file, mat_A, vec_b);
-  CG_PRINT("done\n");
+
+  printf("MPI Nodes: %d\n", g_mpi_group_size);
+  printf("\tThreads\tTime\n");
 
   END_ROOT_SECTION
 
@@ -114,6 +114,7 @@ int main(int argc, char **argv)
   CG_PRINTF("max OMP threads: %d\n", omp_get_max_threads());
 
   MPI_Bcast(&d_max_iter, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&d_max_exec, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD);
 
   d_mat_A = distribute_matrix(mat_A);
   d_vec_b = distribute_vector(vec_b);
@@ -121,12 +122,11 @@ int main(int argc, char **argv)
   /* Test MV Ops */
   //test_mv_ops(d_mat_A, d_vec_b);
 
-  for(exec_count = 0; exec_count < MAX_EXECUTION_COUNT; exec_count++) {
+  for(exec_count = 0; exec_count < d_max_exec; exec_count++) {
     /* Compute CG */
     if(g_mpi_rank == ROOT_RANK)
       start_time = MPI_Wtime();
     
-    CG_PRINT("going to CG\n");
     d_vec_x = conj_grad(d_max_iter, d_mat_A, d_vec_b);
 
     if(g_mpi_rank == ROOT_RANK)
@@ -136,11 +136,7 @@ int main(int argc, char **argv)
     
     BEGIN_ROOT_SECTION
 
-    printf("Execution #%d -> Config: OMP+MPI | Time: %f seconds | Nodes: %d | Threads: %d\n"
-           , exec_count+1
-           , end_time - start_time
-           , g_mpi_group_size
-           , omp_get_max_threads());
+    printf("%d\t%d\t%f\n", exec_count, omp_get_max_threads(), end_time - start_time);
     
     /* Print result */
     //print_sparse(vec_x, "vec_x (result)");
